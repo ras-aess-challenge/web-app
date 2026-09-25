@@ -7,7 +7,7 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "sim": "node src/sim-publisher.js",
-    "test": "node --test test/normalize.test.js test/gateway.test.js"
+    "test": "node --test test/normalize.test.js test/gateway.test.js test/ws.test.js test/mqtt-roundtrip.test.js"
   },
   "dependencies": {
     "mqtt": "^5.10.0",

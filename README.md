@@ -7,7 +7,15 @@ Vite+React dashboard + Node.js MQTT->WS backend. See PLAN.md and docs/ona-contra
 1. `mosquitto -c mosquitto/mosquitto.conf`
 2. `cd backend && npm i && npm start` (+ `npm run sim` in a second terminal for fake ROS bridge)
 3. `cd dashboard && npm i && npm run dev` -> http://localhost:5173
-4. `cd backend && npm test` (13 tests: contract, gateway, sync, commands, sim shapes)
+
+## Tests
+
+- Backend `cd backend && npm test` — 17 tests: contract, gateway, WS lifecycle
+  (connect/status, sync replay, cmd ack/forward, disconnect/reconnect idempotency),
+  live MQTT loopback (skips cleanly when no broker at `MQTT_URL`).
+- Dashboard `cd dashboard && npm test` — 10 vitest tests: staleness
+  classification/boundaries/`targetAge` fallback, WS client sync-on-open,
+  dedupe/malformed drop, reconnect backoff.
 
 ## Docker
 
