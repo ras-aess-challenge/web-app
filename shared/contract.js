@@ -98,6 +98,18 @@ export function normalizeMission(raw) {
   };
 }
 
+export const COMMAND_ACTIONS = Object.freeze(['sync', 'assign-mission', 'cancel-mission', 'request-status']);
+
+// Dashboard -> backend command envelope validation. Returns { id, action, rest } or null.
+export function validateCommand(msg) {
+  if (!msg || typeof msg !== 'object' || msg.kind !== 'cmd') return null;
+  if (typeof msg.id !== 'string' || typeof msg.ts !== 'string') return null;
+  if (Number.isNaN(Date.parse(msg.ts))) return null;
+  const action = msg.payload?.action;
+  if (!COMMAND_ACTIONS.includes(action)) return null;
+  return { id: msg.id, action, payload: msg.payload };
+}
+
 export function isEnvelope(m) {
   return (
     m !== null &&

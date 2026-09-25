@@ -13,6 +13,9 @@ export default function App() {
   const [beacons, setBeacons] = useState({});
   const [events, setEvents] = useState([]);
   const [mission, setMission] = useState(null);
+  const [acks, setAcks] = useState([]);
+  const [ona, setOna] = useState(null);
+  const [pending, setPending] = useState({});
   const [conn, setConn] = useState({ ws: 'connecting', lastMsgAt: null });
   const [now, setNow] = useState(Date.now());
   const [client, setClient] = useState(null);
@@ -34,6 +37,12 @@ export default function App() {
         } else if (m.kind === 'event') setEvents((p) => [m.payload, ...p].slice(0, 200));
         else if (m.kind === 'beacon') setBeacons((p) => ({ ...p, [m.payload.id]: m.payload }));
         else if (m.kind === 'mission') setMission(m.payload);
+        else if (m.kind === 'cmd.ack') {
+          setAcks((p) => [m.payload, ...p].slice(0, 20));
+          if (m.payload?.ackFor) setPending((p) => {
+            const n = { ...p }; delete n[m.payload.ackFor]; return n;
+          });
+        } else if (m.kind === 'ona.status') setOna(m.payload);
       },
     });
     setClient(c);
@@ -45,10 +54,16 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  const sendCmd = (action, extra = {}) => client?.send({
-    kind: 'cmd', id: `dash-${Date.now()}`, ts: new Date().toISOString(),
-    source: 'dashboard', payload: { action, ...extra },
-  });
+  const sendCmd = (action, extra = {}) => {
+    const id = `dash-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    setPending((p) => ({ ...p, [id]: { action, at: new Date().toISOString() } }));
+    client?.send({
+      kind: 'cmd', id, ts: new Date().toISOString(),
+      source: 'dashboard', payload: { action, ...extra },
+    });
+    // expire pending after 10s (no ack -> show timeout)
+    setTimeout(() => setPending((p) => (p[id] ? { ...p, [id]: { ...p[id], timeout: true } } : p)), 10000);
+  };
 
   const withStale = Object.fromEntries(
     Object.entries(targets).map(([id, t]) => {
@@ -66,6 +81,8 @@ export default function App() {
         <span>WS:{conn.ws}</span>
         <span>last:{conn.lastMsgAt ?? '—'}</span>
         <span>{new Date(now).toLocaleTimeString()}</span>
+        {ona && <span>ONA:{ona.ona}</span>}
+        {Object.keys(pending).length > 0 && <span className="stale-STALE">PENDING:{Object.keys(pending).length}</span>}
         {critCount > 0 && <span className="stale-LOST">CRIT:{critCount}</span>}
       </header>
       <main>
@@ -84,6 +101,7 @@ export default function App() {
           <MissionPanel mission={mission} onCommand={sendCmd} />
           <div className="panel">
             <h3>Targets</h3>
+            {Object.keys(withStale).length === 0 && <div>no targets yet</div>}
             <table><tbody>
               {Object.values(withStale).map((t) => (
                 <tr key={t.id}>
@@ -102,6 +120,12 @@ export default function App() {
             <button onClick={() => selectedBeacon && sendCmd('assign-mission', { beaconId: selectedBeacon, targetRobot: 'executor', objective: `Inspect ${selectedBeacon}` })} disabled={!selectedBeacon}>
               Assign mission to selected beacon
             </button>
+            {Object.entries(pending).map(([id, p]) => (
+              <div key={id}>…{p.action} {p.timeout ? <span className="stale-LOST">NO ACK</span> : 'sent'}</div>
+            ))}
+            {acks.slice(0, 5).map((a, i) => (
+              <div key={i}>ack {a.action ?? ''} {a.status} for {a.ackFor}</div>
+            ))}
           </div>
         </div>
       </main>

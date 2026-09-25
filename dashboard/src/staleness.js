@@ -1,4 +1,7 @@
-export const STALENESS = { LIVE_MS: 5000, STALE_MS: 15000 };
+export const STALENESS = {
+  LIVE_MS: Number(import.meta.env?.VITE_LIVE_MS || 5000),
+  STALE_MS: Number(import.meta.env?.VITE_STALE_MS || 15000),
+};
 
 export function classifyStaleness(ageMs, t = STALENESS) {
   if (ageMs <= t.LIVE_MS) return 'LIVE';

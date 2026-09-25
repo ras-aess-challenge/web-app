@@ -32,6 +32,7 @@ export function BeaconPanel({ beacons, selected, onSelect }) {
   return (
     <div className="panel">
       <h3>Beacons ({list.length})</h3>
+      {list.length === 0 && <div>none yet — writer beacons appear here</div>}
       {list.map((b) => (
         <div key={b.id}>
           <button onClick={() => onSelect?.(b.id)}>{b.id}</button> {b.pos.x.toFixed(1)},{b.pos.y.toFixed(1)} {b.status}
@@ -46,6 +47,7 @@ export function EventFeed({ events }) {
   return (
     <div className="panel">
       <h3>Events ({events.length})</h3>
+      {events.length === 0 && <div>no events yet</div>}
       {events.slice(0, 30).map((e) => (
         <div key={e.id}>[{e.severity}] {e.type} {e.id} @ {e.pos.x.toFixed(1)},{e.pos.y.toFixed(1)} <em>{e.note}</em></div>
       ))}

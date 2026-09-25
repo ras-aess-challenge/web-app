@@ -51,14 +51,19 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
         ctx.closePath(); ctx.fill();
       }
     }
-    // mission target + executor link
+    // mission target + executor link (color by status)
     const mpos = mission?.target?.pos || (mission?.target?.beaconId && beacons[mission.target.beaconId]?.pos);
-    if (mpos && robots.executor) {
-      ctx.strokeStyle = '#e599f7'; ctx.setLineDash([10, 8]);
+    if (mpos && robots.executor && mission?.status !== 'done' && mission?.status !== 'cancelled') {
+      ctx.strokeStyle = mission?.status === 'failed' ? '#ff5252' : mission?.status === 'pending' ? '#ffd43b' : '#e599f7'; ctx.setLineDash([10, 8]);
       ctx.beginPath(); ctx.moveTo(X(robots.executor.pos.x), Y(robots.executor.pos.y)); ctx.lineTo(X(mpos.x), Y(mpos.y)); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.strokeStyle = '#e599f7';
+      ctx.strokeStyle = mission?.status === 'failed' ? '#ff5252' : mission?.status === 'pending' ? '#ffd43b' : '#e599f7';
       ctx.beginPath(); ctx.arc(X(mpos.x), Y(mpos.y), 16, 0, Math.PI * 2); ctx.stroke();
+    }
+    if (mpos && mission?.status === 'done') {
+      ctx.strokeStyle = '#35d07f';
+      ctx.beginPath(); ctx.arc(X(mpos.x), Y(mpos.y), 16, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(X(mpos.x) - 7, Y(mpos.y)); ctx.lineTo(X(mpos.x) - 1, Y(mpos.y) + 6); ctx.lineTo(X(mpos.x) + 8, Y(mpos.y) - 6); ctx.stroke();
     }
     // robots as oriented triangles
     for (const [rid, r] of Object.entries(robots)) {
@@ -97,8 +102,21 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
         <button onClick={() => setView((v) => ({ ...v, scale: Math.min(120, v.scale * 1.2) }))}>+</button>
         <button onClick={() => setView((v) => ({ ...v, scale: Math.max(10, v.scale / 1.2) }))}>−</button>
         <button onClick={() => setView({ scale: 40, ox: null, oy: null })}>reset</button>
+        <span style={{ color: '#9fb2c8' }}>drag to pan</span>
       </div>
-      <canvas ref={ref} />
+      <canvas
+        ref={ref}
+        onMouseDown={(e) => { ref.current._drag = { x: e.clientX, y: e.clientY, ox: view.ox, oy: view.oy }; }}
+        onMouseMove={(e) => {
+          const d = ref.current._drag;
+          if (!d) return;
+          const rect = ref.current.getBoundingClientRect();
+          const pxPerCss = (ref.current.width / rect.width);
+          setView((v) => ({ ...v, ox: (d.ox ?? ref.current.width / 2) + (e.clientX - d.x) * pxPerCss, oy: (d.oy ?? 960 / 2) + (e.clientY - d.y) * pxPerCss }));
+        }}
+        onMouseUp={() => { ref.current._drag = null; }}
+        onMouseLeave={() => { ref.current._drag = null; }}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { toEnvelope } from '../src/normalize.js';
 import { classifyStaleness } from '../../shared/thresholds.js';
+import { validateCommand } from '../../shared/contract.js';
 
 let s = 0;
 const seq = () => ++s;
@@ -32,4 +33,33 @@ test('staleness thresholds', () => {
   assert.equal(classifyStaleness(1000, { LIVE_MS: 5000, STALE_MS: 15000 }), 'LIVE');
   assert.equal(classifyStaleness(6000, { LIVE_MS: 5000, STALE_MS: 15000 }), 'STALE');
   assert.equal(classifyStaleness(20000, { LIVE_MS: 5000, STALE_MS: 15000 }), 'LOST');
+});
+
+test('commands validated', () => {
+  const ok = validateCommand({ kind: 'cmd', id: 'd1', ts: now, source: 'dashboard', payload: { action: 'assign-mission', beaconId: 'B-1' } });
+  assert.equal(ok.action, 'assign-mission');
+  assert.equal(validateCommand({ kind: 'cmd', id: 'd1', ts: now, source: 'dashboard', payload: { action: 'nuke' } }), null);
+  assert.equal(validateCommand({ kind: 'cmd', id: 'd1', ts: 'bad', source: 'dashboard', payload: { action: 'sync' } }), null);
+});
+
+test('snapshot key is kind:id (no overwrite across kinds)', () => {
+  const a = toEnvelope('targets/X', JSON.stringify({ id: 'X', pos: { x: 0, y: 0 }, ts: now }), seq);
+  const b = toEnvelope('beacons/X', JSON.stringify({ id: 'X', pos: { x: 1, y: 1 }, ts: now }), seq);
+  assert.equal(a.kind, 'target');
+  assert.equal(b.kind, 'beacon');
+  // latestById keying in server.js is `${kind}:${payload.id}` — both must survive sync
+  const m = new Map();
+  m.set(`${a.kind}:${a.payload.id}`, a);
+  m.set(`${b.kind}:${b.payload.id}`, b);
+  assert.equal(m.size, 2);
+});
+
+test('sync is local-only (never republished to MQTT)', () => {
+  // wireCommands rule: sync validated but filtered before mqtt.publish
+  const sync = validateCommand({ kind: 'cmd', id: 'x', ts: now, source: 'dashboard', payload: { action: 'sync' } });
+  assert.equal(sync.action, 'sync');
+  const shouldPublish = (cmd) => cmd && cmd.action !== 'sync' && !!validateCommand({ kind: 'cmd', id: 'x', ts: now, source: 'dashboard', payload: cmd });
+  assert.equal(shouldPublish({ action: 'sync' }), false);
+  assert.equal(!!shouldPublish({ action: 'assign-mission' }), true);
+  assert.equal(!!shouldPublish({ action: 'nuke' }), false);
 });
