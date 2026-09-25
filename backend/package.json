@@ -1,0 +1,16 @@
+{
+  "name": "living-map-backend",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Node.js app layer: MQTT -> normalize -> WebSocket",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "sim": "node src/sim-publisher.js",
+    "test": "node --test test/normalize.test.js"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.0",
+    "ws": "^8.18.0"
+  }
+}
