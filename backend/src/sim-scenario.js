@@ -33,9 +33,10 @@ export function scenarioTick(elapsed, now = new Date().toISOString()) {
   });
   const active = t >= 25 && t < 60;
   const ex = executorX(t);
+  const estate = t < 25 ? 'standby' : t < 40 ? 'en-route' : t < 60 ? 'inspecting' : 'returning';
   msgs.push({
     topic: 'robots/executor',
-    payload: { id: 'executor', pos: { x: ex, y: -2 }, theta: active ? 0 : 1.57, batteryPct: 88, state: active ? 'en-route' : t >= 60 ? 'returning' : 'standby', source: 'executor', ts: now },
+    payload: { id: 'executor', pos: { x: ex, y: -2 }, theta: active ? 0 : 1.57, batteryPct: 88, state: estate, source: 'executor', ts: now },
   });
   // Detection once per cycle + beacon roster from t>=15
   if (Math.floor(t) === 15) {

@@ -57,7 +57,7 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
   const srcRef = useRef(null);
   const sigRef = useRef('');
   const [base, setBase] = useState('osm'); // osm | blank
-  const [follow, setFollow] = useState('none'); // none | writer | executor
+  const [follow, setFollow] = useState('writer'); // none | writer | executor
 
   // Cheap signature of everything the map draws (excludes volatile timestamps).
   // Lets us skip the full feature rebuild when a render carried no real change

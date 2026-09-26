@@ -26,6 +26,8 @@ test('executor standby -> en-route -> returning, wraps without teleport', () => 
   assert.equal(m(5).state, 'standby');
   assert.equal(m(30).state, 'en-route');
   assert.ok(m(30).pos.x > -4 && m(30).pos.x < 2.5);
+  assert.equal(m(50).state, 'inspecting');
+  assert.equal(m(50).pos.x, 2.5);
   assert.equal(m(70).state, 'returning');
   const end = m(CYCLE_S - 0.5).pos.x;
   const start = m(0.5).pos.x;
