@@ -16,10 +16,10 @@ import { Stroke, Fill, Style, Text, RegularShape, Circle as CircleStyle } from '
 
 // Site anchor: local (x,y) meters are plotted as ANCHOR_MERC + [x, y].
 // EPSG:3857 units are meters, so offsets are exact for small sites.
-// Placeholder default — set VITE_ANCHOR_LON/LAT to the real test site.
+// Placeholder default: Tunis, Tunisia — set VITE_ANCHOR_LON/LAT to the real test site.
 const ANCHOR = [
-  Number(import.meta.env?.VITE_ANCHOR_LON ?? 2.3522),
-  Number(import.meta.env?.VITE_ANCHOR_LAT ?? 48.8566),
+  Number(import.meta.env?.VITE_ANCHOR_LON ?? 10.1815),
+  Number(import.meta.env?.VITE_ANCHOR_LAT ?? 36.8065),
 ];
 const ANCHOR_MERC = fromLonLat(ANCHOR);
 const P = (x, y) => [ANCHOR_MERC[0] + x, ANCHOR_MERC[1] + y];

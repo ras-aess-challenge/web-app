@@ -34,7 +34,7 @@ Two renderers behind a toggle (default OpenLayers, Canvas fallback):
   **real map** base = OpenStreetMap tiles + **grid** base = offline blank grid.
   Local (x,y) meters are plotted as site-anchor + offset (EPSG:3857, exact for
   small sites); set `VITE_ANCHOR_LON`/`VITE_ANCHOR_LAT` to the test site
-  (placeholder default: Paris). Trails/robots/beacons/events/mission/targets are
+  (placeholder default: Tunis, Tunisia). Trails/robots/beacons/events/mission/targets are
   vector layers with drag-pan + wheel-zoom, lazy-loaded in its own chunk.
   OSM tiles need internet; grid mode is the disconnected-ops fallback.
 - Canvas (`dashboard/src/MapCanvas.jsx`): zero-dependency fallback with the same props.
