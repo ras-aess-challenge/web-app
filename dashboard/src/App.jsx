@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { createWSClient } from './wsClient.js';
 import { targetAge, classifyStaleness } from './staleness.js';
 import MapCanvas from './MapCanvas.jsx';
+const OlMap = lazy(() => import('./OlMap.jsx'));
 import { RobotPanel, MissionPanel, BeaconPanel, EventFeed } from './panels.jsx';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:4311';
@@ -21,6 +22,7 @@ export default function App() {
   const [client, setClient] = useState(null);
   const [layers, setLayers] = useState({ trails: true, beacons: true, events: true, targets: true });
   const [selectedBeacon, setSelectedBeacon] = useState(null);
+  const [mapMode, setMapMode] = useState('openlayers'); // openlayers | canvas
 
   useEffect(() => {
     const c = createWSClient({
@@ -92,8 +94,18 @@ export default function App() {
             {Object.keys(layers).map((k) => (
               <label key={k}><input type="checkbox" checked={layers[k]} onChange={() => setLayers((p) => ({ ...p, [k]: !p[k] }))} />{k}</label>
             ))}
+            <span style={{ marginLeft: 8 }}>
+              <button onClick={() => setMapMode('openlayers')} disabled={mapMode === 'openlayers'}>openlayers</button>{' '}
+              <button onClick={() => setMapMode('canvas')} disabled={mapMode === 'canvas'}>canvas</button>
+            </span>
           </div>
-          <MapCanvas targets={withStale} robots={robots} trails={trails} beacons={beacons} events={events} mission={mission} layers={layers} selectedBeacon={selectedBeacon} />
+          {mapMode === 'openlayers' ? (
+            <Suspense fallback={<div className="panel">loading map…</div>}>
+              <OlMap targets={withStale} robots={robots} trails={trails} beacons={beacons} events={events} mission={mission} layers={layers} selectedBeacon={selectedBeacon} />
+            </Suspense>
+          ) : (
+            <MapCanvas targets={withStale} robots={robots} trails={trails} beacons={beacons} events={events} mission={mission} layers={layers} selectedBeacon={selectedBeacon} />
+          )}
         </div>
         <div>
           <RobotPanel name="Writer" robot={robots.writer} now={now} />

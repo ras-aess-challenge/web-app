@@ -26,3 +26,11 @@ Vite+React dashboard + Node.js MQTT->WS backend. See PLAN.md and docs/ona-contra
 Stop `npm run sim`. Set `MQTT_URL` to the real broker and `VITE_WS_URL` to the backend. Tune `VITE_LIVE_MS`/`VITE_STALE_MS`, `HEARTBEAT_MS`, `SNAPSHOT_CAP` without code changes.
 
 Simulator `backend/src/sim-publisher.js` is dev-only stand-in for the ROS2->MQTT bridge.
+
+## Map
+
+Two renderers behind a toggle (default OpenLayers, Canvas fallback):
+- OpenLayers (`dashboard/src/OlMap.jsx`, `ol` package, BSD-2-Clause, offline, no keys):
+  meters are map units (EPSG:3857), grid + trails/robots/beacons/events/mission/targets
+  as vector layers, drag-pan + wheel-zoom, lazy-loaded in its own chunk.
+- Canvas (`dashboard/src/MapCanvas.jsx`): zero-dependency fallback with the same props.
