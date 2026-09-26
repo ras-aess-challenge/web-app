@@ -30,7 +30,11 @@ Simulator `backend/src/sim-publisher.js` is dev-only stand-in for the ROS2->MQTT
 ## Map
 
 Two renderers behind a toggle (default OpenLayers, Canvas fallback):
-- OpenLayers (`dashboard/src/OlMap.jsx`, `ol` package, BSD-2-Clause, offline, no keys):
-  meters are map units (EPSG:3857), grid + trails/robots/beacons/events/mission/targets
-  as vector layers, drag-pan + wheel-zoom, lazy-loaded in its own chunk.
+- OpenLayers (`dashboard/src/OlMap.jsx`, `ol` package, BSD-2-Clause, no keys):
+  **real map** base = OpenStreetMap tiles + **grid** base = offline blank grid.
+  Local (x,y) meters are plotted as site-anchor + offset (EPSG:3857, exact for
+  small sites); set `VITE_ANCHOR_LON`/`VITE_ANCHOR_LAT` to the test site
+  (placeholder default: Paris). Trails/robots/beacons/events/mission/targets are
+  vector layers with drag-pan + wheel-zoom, lazy-loaded in its own chunk.
+  OSM tiles need internet; grid mode is the disconnected-ops fallback.
 - Canvas (`dashboard/src/MapCanvas.jsx`): zero-dependency fallback with the same props.
