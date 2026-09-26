@@ -9,6 +9,13 @@ let mqttUp = false;
 let droppedExtra = 0; // malformed WS frames counted here (gateway counts semantic drops)
 
 const wss = new WebSocketServer({ port: config.wsPort });
+wss.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') {
+    console.error(`[backend] port ${config.wsPort} in use — another backend already running? Kill it or set WS_PORT.`);
+    process.exit(1);
+  }
+  throw e;
+});
 console.log(`[backend] WS listening on ws://localhost:${config.wsPort}`);
 
 function broadcast(obj) {

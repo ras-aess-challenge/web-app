@@ -26,6 +26,12 @@ Vite+React dashboard + Node.js MQTT->WS backend. See PLAN.md and docs/ona-contra
 Stop `npm run sim`. Set `MQTT_URL` to the real broker and `VITE_WS_URL` to the backend. Tune `VITE_LIVE_MS`/`VITE_STALE_MS`, `HEARTBEAT_MS`, `SNAPSHOT_CAP` without code changes.
 
 Simulator `backend/src/sim-publisher.js` is dev-only stand-in for the ROS2->MQTT bridge.
+It runs a looping 90 s scenario (logic in `sim-scenario.js`, unit-tested): continuous
+Writer/Executor motion, detection + beacon B-1 from t=15 s, mission M-1
+pending→active→done, Executor return leg. Beacon/mission roster republishes on
+change + 10 s heartbeat, so backend restarts and late dashboard connections converge.
+Run exactly ONE instance (`npm run sim`) — two instances double-publish the same
+robot IDs and the robots will appear to teleport.
 
 ## Map
 
