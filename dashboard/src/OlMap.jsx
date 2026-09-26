@@ -25,7 +25,7 @@ const ANCHOR_MERC = fromLonLat(ANCHOR);
 const P = (x, y) => [ANCHOR_MERC[0] + x, ANCHOR_MERC[1] + y];
 
 const HOME_BLANK = { center: [0, 0], resolution: 0.05 };
-const HOME_OSM = { center: ANCHOR_MERC, resolution: 1.5 };
+const HOME_OSM = { center: ANCHOR_MERC, resolution: 0.5 };
 const K = 2; // ellipse ~95%
 
 function ellipseRing(cx, cy, sx, sy, angleDeg, k = K, n = 64) {
@@ -56,6 +56,7 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
   const mapRef = useRef(null);
   const srcRef = useRef(null);
   const [base, setBase] = useState('osm'); // osm | blank
+  const [follow, setFollow] = useState('none'); // none | writer | executor
 
   useEffect(() => {
     const src = {
@@ -179,23 +180,28 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
       }));
       src.robots.addFeature(f);
     }
-    // targets + ellipses
+    // targets + ellipses (LOST targets dimmed so stale ghosts don't dominate)
     src.targets.clear();
     if (layers.targets) {
       for (const t of Object.values(targets || {})) {
+        const lost = t._stale === 'LOST';
         const el = new Feature({ geometry: new Polygon(ellipseRing(t.pos.x, t.pos.y, t.uncertainty.sigmaX, t.uncertainty.sigmaY, t.uncertainty.angleDeg)) });
         el.setStyle(new Style({
-          stroke: new Stroke({ color: staleColor(t._stale), width: 2 }),
+          stroke: new Stroke({ color: lost ? staleColor(t._stale) + '66' : staleColor(t._stale), width: 2 }),
           fill: new Fill({ color: staleColor(t._stale) + '22' }),
         }));
         const dot = new Feature({ geometry: new Point(P(t.pos.x, t.pos.y)) });
         dot.setStyle(new Style({
-          image: new CircleStyle({ radius: 6, fill: new Fill({ color: '#fff' }), stroke: new Stroke({ color: '#0b0e13', width: 1 }) }),
-          text: new Text({ text: `${t.id} ${(t.confidence ?? 0).toFixed(2)}`, offsetX: 13, textAlign: 'left', fill: new Fill({ color: '#111' }), backgroundFill: new Fill({ color: 'rgba(255,255,255,0.85)' }), padding: [1, 4, 1, 4] }),
+          image: new CircleStyle({ radius: 6, fill: new Fill({ color: '#fff' }), stroke: new Stroke({ color: '#0b0e13', width: 1 }), opacity: lost ? 0.35 : 1 }),
+          text: new Text({ text: `${t.id} ${(t.confidence ?? 0).toFixed(2)}`, offsetX: 13, textAlign: 'left', fill: new Fill({ color: '#111' }), backgroundFill: new Fill({ color: 'rgba(255,255,255,0.85)' }), padding: [1, 4, 1, 4], opacity: lost ? 0.5 : 1 }),
         }));
         src.targets.addFeature(el);
         src.targets.addFeature(dot);
       }
+    }
+    // follow camera
+    if (follow !== 'none' && robots?.[follow]) {
+      mapRef.current?.getView().setCenter(P(robots[follow].pos.x, robots[follow].pos.y));
     }
   });
 
@@ -221,6 +227,12 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
         <span>
           <button onClick={() => setBase('osm')} disabled={base === 'osm'}>real map</button>{' '}
           <button onClick={() => setBase('blank')} disabled={base === 'blank'}>grid</button>
+        </span>
+        <span>
+          follow:
+          <button onClick={() => setFollow('none')} disabled={follow === 'none'}>none</button>{' '}
+          <button onClick={() => setFollow('writer')} disabled={follow === 'writer'}>writer</button>{' '}
+          <button onClick={() => setFollow('executor')} disabled={follow === 'executor'}>executor</button>
         </span>
         <span style={{ color: '#9fb2c8' }}>openlayers · drag pan · wheel zoom · anchor {ANCHOR[0].toFixed(4)},{ANCHOR[1].toFixed(4)}</span>
       </div>

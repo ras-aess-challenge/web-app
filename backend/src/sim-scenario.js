@@ -7,12 +7,12 @@ export const BEACON_POS = { x: -0.75, y: 1.0 };
 const r2 = (n) => Math.round(n * 100) / 100;
 
 function writerPos(elapsed) {
-  return { x: r2(-6 + (elapsed % 40) * 0.35), y: r2(2 * Math.sin(elapsed * 0.4) + (Math.floor(elapsed / 40) % 4)) };
+  return { x: r2(-6 + (elapsed % 25) * 0.56), y: r2(2 * Math.sin(elapsed * 0.4) + (Math.floor(elapsed / 25) % 4)) };
 }
 
 function executorX(t) {
   if (t < 25) return -4;
-  if (t < 55) return r2(-4 + (t - 25) * (6.5 / 30));
+  if (t < 40) return r2(-4 + (t - 25) * (6.5 / 15));
   if (t < 60) return 2.5;
   return r2(2.5 - (t - 60) * (6.5 / 30)); // return leg, wraps smoothly to -4
 }
