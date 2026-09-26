@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { createWSClient } from './wsClient.js';
 import { targetAge, classifyStaleness } from './staleness.js';
 import MapCanvas from './MapCanvas.jsx';
@@ -67,12 +67,12 @@ export default function App() {
     setTimeout(() => setPending((p) => (p[id] ? { ...p, [id]: { ...p[id], timeout: true } } : p)), 10000);
   };
 
-  const withStale = Object.fromEntries(
+  const withStale = useMemo(() => Object.fromEntries(
     Object.entries(targets).map(([id, t]) => {
       const age = targetAge(t, now);
       return [id, { ...t, _ageMs: age, _stale: classifyStaleness(age) }];
     }),
-  );
+  ), [targets, now]);
   const critCount = events.filter((e) => e.severity === 'critical').length;
 
   return (

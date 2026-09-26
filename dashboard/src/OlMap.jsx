@@ -55,8 +55,23 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
   const divRef = useRef(null);
   const mapRef = useRef(null);
   const srcRef = useRef(null);
+  const sigRef = useRef('');
   const [base, setBase] = useState('osm'); // osm | blank
   const [follow, setFollow] = useState('none'); // none | writer | executor
+
+  // Cheap signature of everything the map draws (excludes volatile timestamps).
+  // Lets us skip the full feature rebuild when a render carried no real change
+  // (e.g. the 1 s staleness clock tick with no new data).
+  function dataSig() {
+    const r = (n) => Math.round(n * 100) / 100;
+    const trailSig = Object.entries(trails || {}).map(([id, pts]) => `${id}:${pts.length}:${pts.length ? `${r(pts[pts.length - 1].x)},${r(pts[pts.length - 1].y)}` : ''}`);
+    const robotSig = Object.values(robots || {}).map((o) => `${o.id}:${r(o.pos.x)},${r(o.pos.y)},${o.theta},${o.state}`);
+    const beaconSig = Object.values(beacons || {}).map((b) => `${b.id}:${r(b.pos.x)},${r(b.pos.y)},${b.status}`);
+    const eventSig = (events || []).slice(0, 50).map((e) => e.id);
+    const missionSig = mission ? `${mission.id}:${mission.status}:${mission.target?.beaconId}:${mission.target?.pos ? `${r(mission.target.pos.x)},${r(mission.target.pos.y)}` : ''}` : 'none';
+    const targetSig = Object.values(targets || {}).map((t) => `${t.id}:${r(t.pos.x)},${r(t.pos.y)},${t.confidence?.toFixed(2)},${t._stale}`);
+    return JSON.stringify([trailSig, robotSig, beaconSig, eventSig, missionSig, targetSig, selectedBeacon, layers]);
+  }
 
   useEffect(() => {
     const src = {
@@ -102,6 +117,13 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
 
   useEffect(() => {
     if (!srcRef.current) return;
+    // follow camera stays live every render (cheap: one setCenter)
+    if (follow !== 'none' && robots?.[follow]) {
+      mapRef.current?.getView().setCenter(P(robots[follow].pos.x, robots[follow].pos.y));
+    }
+    const sig = dataSig();
+    if (sig === sigRef.current) return; // no real change since last rebuild
+    sigRef.current = sig;
     const { src, layers: L } = srcRef.current;
     L.trailsLayer.setVisible(!!layers.trails);
     L.beaconsLayer.setVisible(!!layers.beacons);
@@ -198,10 +220,6 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
         src.targets.addFeature(el);
         src.targets.addFeature(dot);
       }
-    }
-    // follow camera
-    if (follow !== 'none' && robots?.[follow]) {
-      mapRef.current?.getView().setCenter(P(robots[follow].pos.x, robots[follow].pos.y));
     }
   });
 
