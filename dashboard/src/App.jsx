@@ -4,7 +4,7 @@ import { targetAge, classifyStaleness } from './staleness.js';
 import MapCanvas from './MapCanvas.jsx';
 const OlMap = lazy(() => import('./OlMap.jsx'));
 import { RobotPanel, MissionPanel, BeaconPanel, EventFeed } from './panels.jsx';
-
+import './dashboard_mqtt_client.js'
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:4311';
 
 export default function App() {
