@@ -1,0 +1,11 @@
+services:
+  ros:
+    build: ./ros2
+    ports:
+      - "8765:8765"
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+    depends_on:
+      - mosquitto
+    restart: unless-stopped

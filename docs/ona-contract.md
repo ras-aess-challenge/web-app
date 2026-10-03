@@ -44,3 +44,25 @@ Dashboard shows PENDING until ack, NO ACK after 10s timeout. `ona.status` broadc
 1. `mosquitto -c mosquitto/mosquitto.conf` (or docker)
 2. `cd backend && npm i && npm start` (second terminal: `npm run sim`)
 3. `cd dashboard && npm i && npm run dev` -> http://localhost:5173
+
+## ROS 2 bridge (`ros2/`)
+
+`/ona/parsed_targets` (std_msgs/String, JSON) -> `ros_mqtt_bridge.py` -> MQTT -> backend -> WS -> dashboard.
+
+- Accepted target fields: `target_id|id`, `timestamp|ts` (epoch s/ms or ISO), `latitude/longitude` **or** `x/y`,
+  `confidence`, `sigma_x|sigmaX`, `sigma_y|sigmaY`, `orientation|angleDeg`, `source`. Lat/lon are converted to the
+  local frame around the same anchor as the dashboard (`ANCHOR_LAT/ANCHOR_LON`, default Tunis).
+- The **source timestamp is preserved** (never replaced by receive time). If the ONA stops publishing a target it ages:
+  PoD decays as `exp(-lambda*age)` and the uncertainty ellipse grows (`VITE_DECAY_LAMBDA`, `VITE_ELLIPSE_GROWTH`).
+- Robot health -> `robots/writer` (`state`: `exploring | degraded | fault(<part>) | node-down`) and `events/*` (type `system`).
+  One silent topic while the node is alive = sensor/hardware; all topics silent = node crash (software).
+- Env: `MQTT_HOST`, `MQTT_PORT`, `ROBOT_ID`, `ANCHOR_LAT`, `ANCHOR_LON`, `SIM_ONA=0` to disable the fake ONA.
+
+### Missions (dashboard -> Executor) and beacons
+
+- `/ona/beacons` (String JSON: `beacon_id, x/y | latitude/longitude, info, timestamp, event_type, severity`) -> `beacons/<id>`;
+  first sighting also emits `events/beacon-<id>-<ms>` (victim/hazard).
+- Dashboard "Send Executor to <beacon>" -> `cmd/assign-mission` -> bridge looks up the beacon position, publishes
+  `missions/M-n` (`pending`) and `/executor/mission`; the Executor drives there, inspects (4 s), returns.
+  Mission status `active` / `done` comes back from `/executor/status`. `cmd/cancel-mission` stops it.
+- "Critical" pill = unresolved alerts: events sharing the same key (`id` minus the `-<ms>` suffix) are resolved by a later `info` one.

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { createWSClient } from './wsClient.js';
-import { targetAge, classifyStaleness } from './staleness.js';
+import { targetAge, classifyStaleness, currentPod, grownSigma, DECAY } from './staleness.js';
 import MapCanvas from './MapCanvas.jsx';
 import {
   RobotCard, MissionCard, TargetsCard, BeaconPanel, EventFeed, CommandLog, SystemChain,
@@ -96,10 +96,29 @@ export default function App() {
   const withStale = useMemo(() => Object.fromEntries(
     Object.entries(targets).map(([id, t]) => {
       const age = targetAge(t, now);
-      return [id, { ...t, _ageMs: Math.max(0, age), _stale: classifyStaleness(age) }];
+      const pod = currentPod(t.confidence, age);
+      return [id, {
+        ...t,
+        _ageMs: Math.max(0, age),
+        _stale: classifyStaleness(age),
+        _pod: pod,                       // PoD after exp(-lambda*age) decay
+        _rescout: pod < DECAY.RESCOUT_POD, // "Re-Scout" directive
+        _sigmaX: grownSigma(t.uncertainty.sigmaX, age), // ellipse grows with age
+        _sigmaY: grownSigma(t.uncertainty.sigmaY, age),
+      }];
     }),
   ), [targets, now]);
-  const critCount = events.filter((e) => e.severity === 'critical').length;
+  // "Critical" = alertes NON résolues : on groupe par clé (id sans suffixe horodaté) et le
+  // dernier événement du groupe décide (ex: lidar ERROR -> back to OK = résolu).
+  const critCount = useMemo(() => {
+    const latest = new Map();
+    for (const e of events) {
+      const k = String(e.id).replace(/-\d{10,}$/, '');
+      const prev = latest.get(k);
+      if (!prev || Date.parse(e.ts) >= Date.parse(prev.ts)) latest.set(k, e);
+    }
+    return [...latest.values()].filter((e) => e.severity === 'critical').length;
+  }, [events]);
   const lastAge = ageMs(conn.lastMsgAt, now);
   const linkState = conn.ws === 'open' ? 'LIVE' : conn.ws === 'connecting' ? 'STALE' : 'LOST';
   const onaState = !ona ? 'idle' : ona.ona === 'connected' ? 'LIVE' : 'LOST';

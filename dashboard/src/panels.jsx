@@ -120,17 +120,23 @@ export function TargetsCard({ targets }) {
       {list.length === 0 && <div className="muted">No targets detected yet.</div>}
       {list.length > 0 && (
         <table>
-          <thead><tr><th>ID</th><th>GPS</th><th>Conf.</th><th>Status</th></tr></thead>
+          <thead><tr><th>ID</th><th>GPS</th><th>PoD</th><th>±σ (m)</th><th>Status</th></tr></thead>
           <tbody>
             {list.map((t) => (
               <tr key={t.id}>
                 <td><strong>{t.id}</strong><div className="muted small">{t.source}</div></td>
                 <td className="small">{fmtGps(t.pos)}</td>
                 <td>
-                  <span className="conf"><span className="conf-fill" style={{ width: `${(t.confidence ?? 0) * 100}%` }} /></span>
-                  <span className="small"> {((t.confidence ?? 0) * 100).toFixed(0)}%</span>
+                  <span className="conf"><span className="conf-fill" style={{ width: `${(t._pod ?? t.confidence ?? 0) * 100}%` }} /></span>
+                  <span className="small"> {((t._pod ?? t.confidence ?? 0) * 100).toFixed(0)}%</span>
+                  <div className="muted small">initial {((t.confidence ?? 0) * 100).toFixed(0)}%</div>
                 </td>
-                <td><Badge state={t._stale} /><div className="muted small">{fmtAge(t._ageMs)}</div></td>
+                <td className="small">{(t._sigmaX ?? t.uncertainty.sigmaX).toFixed(1)} × {(t._sigmaY ?? t.uncertainty.sigmaY).toFixed(1)}</td>
+                <td>
+                  <Badge state={t._stale} />
+                  {t._rescout && <div><span className="badge badge-LOST">RE-SCOUT</span></div>}
+                  <div className="muted small">{fmtAge(t._ageMs)}</div>
+                </td>
               </tr>
             ))}
           </tbody>

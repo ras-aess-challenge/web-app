@@ -78,16 +78,16 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
     }
     // targets + uncertainty ellipses
     if (layers.targets) {
-      for (const t of Object.values(targets)) {
+      for (const [ti, t] of Object.values(targets).entries()) {
         const x = X(t.pos.x), y = Y(t.pos.y);
         ctx.save(); ctx.translate(x, y); ctx.rotate((-t.uncertainty.angleDeg * Math.PI) / 180);
         ctx.strokeStyle = t._stale === 'LOST' ? '#ff5252' : t._stale === 'STALE' ? '#ffb020' : '#35d07f';
         ctx.beginPath();
-        ctx.ellipse(0, 0, t.uncertainty.sigmaX * scale * 2, t.uncertainty.sigmaY * scale * 2, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 0, (t._sigmaX ?? t.uncertainty.sigmaX) * scale * 2, (t._sigmaY ?? t.uncertainty.sigmaY) * scale * 2, 0, 0, Math.PI * 2);
         ctx.stroke(); ctx.restore();
         ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#e6edf5'; ctx.font = '600 22px system-ui';
-        ctx.fillText(`${t.id} ${((t.confidence ?? 0) * 100).toFixed(0)}%`, x + 14, y - 12);
+        ctx.fillText(`${t.id} PoD ${(((t._pod ?? t.confidence) ?? 0) * 100).toFixed(0)}%${t._rescout ? ' · RE-SCOUT' : ''}`, x + 14, y - 12 + ([-1, 0, 1][ti % 3]) * 26);
       }
     }
     // scale bar: 2 m

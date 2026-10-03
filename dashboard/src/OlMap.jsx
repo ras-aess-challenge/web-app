@@ -242,9 +242,9 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
     // targets + ellipses (LOST targets dimmed so stale ghosts don't dominate)
     src.targets.clear();
     if (layers.targets) {
-      for (const t of Object.values(targets || {})) {
+      for (const [ti, t] of Object.values(targets || {}).entries()) {
         const lost = t._stale === 'LOST';
-        const el = new Feature({ geometry: new Polygon(ellipseRing(t.pos.x, t.pos.y, t.uncertainty.sigmaX, t.uncertainty.sigmaY, t.uncertainty.angleDeg)) });
+        const el = new Feature({ geometry: new Polygon(ellipseRing(t.pos.x, t.pos.y, t._sigmaX ?? t.uncertainty.sigmaX, t._sigmaY ?? t.uncertainty.sigmaY, t.uncertainty.angleDeg)) });
         el.setStyle(new Style({
           stroke: new Stroke({ color: lost ? staleColor(t._stale) + '66' : staleColor(t._stale), width: 2 }),
           fill: new Fill({ color: staleColor(t._stale) + '22' }),
@@ -252,7 +252,7 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
         const dot = new Feature({ geometry: new Point(P(t.pos.x, t.pos.y)) });
         dot.setStyle(new Style({
           image: new CircleStyle({ radius: 6, fill: new Fill({ color: '#fff' }), stroke: new Stroke({ color: '#0b0e13', width: 2 }) }),
-          text: label(`${t.id} ${((t.confidence ?? 0) * 100).toFixed(0)}%`, { offsetX: 12, textAlign: 'left' }),
+          text: label(`${t.id} PoD ${(((t._pod ?? t.confidence) ?? 0) * 100).toFixed(0)}%${t._rescout ? ' · RE-SCOUT' : ''}`, { offsetX: 12, offsetY: [-16, 0, 16][ti % 3], textAlign: 'left' }), // étiquettes décalées : pas de chevauchement
         }));
         src.targets.addFeature(el);
         src.targets.addFeature(dot);
