@@ -2,10 +2,35 @@ import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { createWSClient } from './wsClient.js';
 import { targetAge, classifyStaleness } from './staleness.js';
 import MapCanvas from './MapCanvas.jsx';
+import {
+  RobotCard, MissionCard, TargetsCard, BeaconPanel, EventFeed, CommandLog, SystemChain,
+  ROBOT_COLORS, ageMs, fmtAge,
+} from './panels.jsx';
 const OlMap = lazy(() => import('./OlMap.jsx'));
-import { RobotPanel, MissionPanel, BeaconPanel, EventFeed } from './panels.jsx';
-import './dashboard_mqtt_client.js'
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:4311';
+
+function Pill({ label, value, state = 'idle' }) {
+  return (
+    <span className={`pill pill-${state}`}>
+      <span className={`dot dot-${state}`} />
+      <span className="pill-label">{label}</span>
+      <span className="pill-value">{value}</span>
+    </span>
+  );
+}
+
+function Legend() {
+  return (
+    <div className="legend">
+      <span><i className="lg-tri" style={{ borderBottomColor: ROBOT_COLORS.writer }} />Writer</span>
+      <span><i className="lg-tri" style={{ borderBottomColor: ROBOT_COLORS.executor }} />Executor</span>
+      <span><i className="lg-diamond" />Beacon</span>
+      <span><i className="lg-circle" />Target (±2σ)</span>
+      <span><i className="lg-square" />Event</span>
+      <span><i className="lg-dash" />Mission path</span>
+    </div>
+  );
+}
 
 export default function App() {
   const [targets, setTargets] = useState({});
@@ -36,8 +61,9 @@ export default function App() {
             const arr = [...(p[m.payload.id] || []), m.payload.pos].slice(-300);
             return { ...p, [m.payload.id]: arr };
           });
-        } else if (m.kind === 'event') setEvents((p) => [m.payload, ...p].slice(0, 200));
-        else if (m.kind === 'beacon') setBeacons((p) => ({ ...p, [m.payload.id]: m.payload }));
+        } else if (m.kind === 'event') {
+          setEvents((p) => [m.payload, ...p.filter((e) => e.id !== m.payload.id)].slice(0, 200));
+        } else if (m.kind === 'beacon') setBeacons((p) => ({ ...p, [m.payload.id]: m.payload }));
         else if (m.kind === 'mission') setMission(m.payload);
         else if (m.kind === 'cmd.ack') {
           setAcks((p) => [m.payload, ...p].slice(0, 20));
@@ -70,77 +96,88 @@ export default function App() {
   const withStale = useMemo(() => Object.fromEntries(
     Object.entries(targets).map(([id, t]) => {
       const age = targetAge(t, now);
-      return [id, { ...t, _ageMs: age, _stale: classifyStaleness(age) }];
+      return [id, { ...t, _ageMs: Math.max(0, age), _stale: classifyStaleness(age) }];
     }),
   ), [targets, now]);
   const critCount = events.filter((e) => e.severity === 'critical').length;
+  const lastAge = ageMs(conn.lastMsgAt, now);
+  const linkState = conn.ws === 'open' ? 'LIVE' : conn.ws === 'connecting' ? 'STALE' : 'LOST';
+  const onaState = !ona ? 'idle' : ona.ona === 'connected' ? 'LIVE' : 'LOST';
+
+  const mapProps = { targets: withStale, robots, trails, beacons, events, mission, layers, selectedBeacon };
 
   return (
-    <>
-      <header>
-        <strong>Living Map — Command Post</strong>
-        <span className={`dot ${conn.ws === 'open' ? 'ok' : 'bad'}`} />
-        <span>WS:{conn.ws}</span>
-        <span>last:{conn.lastMsgAt ?? '—'}</span>
-        <span>{new Date(now).toLocaleTimeString()}</span>
-        {ona && <span>ONA:{ona.ona}</span>}
-        {Object.keys(pending).length > 0 && <span className="stale-STALE">PENDING:{Object.keys(pending).length}</span>}
-        {critCount > 0 && <span className="stale-LOST">CRIT:{critCount}</span>}
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
+          <span className="logo" aria-hidden="true">◎</span>
+          <div>
+            <div className="title">The Living Map</div>
+            <div className="subtitle">Command Post · TSYP14 IEEE RAS × AESS</div>
+          </div>
+        </div>
+        <div className="pills">
+          <Pill label="Link" value={conn.ws} state={linkState} />
+          <Pill label="ONA / MQTT" value={ona?.ona ?? '…'} state={onaState} />
+          <Pill label="Last msg" value={fmtAge(lastAge)} state={conn.lastMsgAt ? classifyStaleness(lastAge) : 'idle'} />
+          <Pill label="Tracked" value={ona?.tracked ?? '—'} />
+          <Pill label="Dropped" value={ona?.dropped ?? '—'} state={ona?.dropped ? 'STALE' : 'idle'} />
+          {Object.keys(pending).length > 0 && <Pill label="Pending" value={Object.keys(pending).length} state="STALE" />}
+          {critCount > 0 && <Pill label="Critical" value={critCount} state="LOST" />}
+          <span className="clock">{new Date(now).toLocaleTimeString()}</span>
+        </div>
       </header>
-      <main>
-        <div>
-          {conn.ws !== 'open' && <div className="panel">LINK LOST — data frozen at {conn.lastMsgAt ?? '—'}</div>}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-            {Object.keys(layers).map((k) => (
-              <label key={k}><input type="checkbox" checked={layers[k]} onChange={() => setLayers((p) => ({ ...p, [k]: !p[k] }))} />{k}</label>
-            ))}
-            <span style={{ marginLeft: 8 }}>
-              <button onClick={() => setMapMode('openlayers')} disabled={mapMode === 'openlayers'}>openlayers</button>{' '}
-              <button onClick={() => setMapMode('canvas')} disabled={mapMode === 'canvas'}>canvas</button>
-            </span>
-          </div>
-          {mapMode === 'openlayers' ? (
-            <Suspense fallback={<div className="panel">loading map…</div>}>
-              <OlMap targets={withStale} robots={robots} trails={trails} beacons={beacons} events={events} mission={mission} layers={layers} selectedBeacon={selectedBeacon} />
-            </Suspense>
-          ) : (
-            <MapCanvas targets={withStale} robots={robots} trails={trails} beacons={beacons} events={events} mission={mission} layers={layers} selectedBeacon={selectedBeacon} />
-          )}
-        </div>
-        <div>
-          <RobotPanel name="Writer" robot={robots.writer} now={now} />
-          <RobotPanel name="Executor" robot={robots.executor} now={now} />
-          <MissionPanel mission={mission} onCommand={sendCmd} />
-          <div className="panel">
-            <h3>Targets</h3>
-            {Object.keys(withStale).length === 0 && <div>no targets yet</div>}
-            <table><tbody>
-              {Object.values(withStale).map((t) => (
-                <tr key={t.id}>
-                  <td>{t.id}</td>
-                  <td>{t.pos.x.toFixed(1)},{t.pos.y.toFixed(1)}</td>
-                  <td>{t.confidence.toFixed(2)}</td>
-                  <td className={`stale-${t._stale}`}>{t._stale} {(t._ageMs / 1000).toFixed(0)}s</td>
-                </tr>
-              ))}
-            </tbody></table>
-          </div>
-          <BeaconPanel beacons={beacons} selected={selectedBeacon} onSelect={setSelectedBeacon} />
-          <EventFeed events={events} />
-          <div className="panel">
-            <button onClick={() => sendCmd('request-status')}>Request status</button>{' '}
-            <button onClick={() => selectedBeacon && sendCmd('assign-mission', { beaconId: selectedBeacon, targetRobot: 'executor', objective: `Inspect ${selectedBeacon}` })} disabled={!selectedBeacon}>
-              Assign mission to selected beacon
-            </button>
-            {Object.entries(pending).map(([id, p]) => (
-              <div key={id}>…{p.action} {p.timeout ? <span className="stale-LOST">NO ACK</span> : 'sent'}</div>
-            ))}
-            {acks.slice(0, 5).map((a, i) => (
-              <div key={i}>ack {a.action ?? ''} {a.status} for {a.ackFor}</div>
-            ))}
+
+      {conn.ws !== 'open' && (
+        <div className="banner">LINK LOST — data frozen at {conn.lastMsgAt ? new Date(conn.lastMsgAt).toLocaleTimeString() : '—'} · reconnecting…</div>
+      )}
+
+      <SystemChain robots={robots} beacons={beacons} ona={ona} conn={conn} mission={mission} now={now} />
+
+      <main className="layout">
+        <div className="col-main">
+          <section className="card map-card">
+            <div className="toolbar">
+              <div className="toggles">
+                {Object.keys(layers).map((k) => (
+                  <label key={k} className={`toggle ${layers[k] ? 'on' : ''}`}>
+                    <input type="checkbox" checked={layers[k]} onChange={() => setLayers((p) => ({ ...p, [k]: !p[k] }))} />{k}
+                  </label>
+                ))}
+              </div>
+              <div className="seg">
+                <button className={mapMode === 'openlayers' ? 'active' : ''} onClick={() => setMapMode('openlayers')}>GPS map</button>
+                <button className={mapMode === 'canvas' ? 'active' : ''} onClick={() => setMapMode('canvas')}>Local frame</button>
+              </div>
+            </div>
+            {mapMode === 'openlayers' ? (
+              <Suspense fallback={<div className="map-loading">loading map…</div>}>
+                <OlMap {...mapProps} />
+              </Suspense>
+            ) : (
+              <MapCanvas {...mapProps} />
+            )}
+            <Legend />
+          </section>
+          <div className="grid-2">
+            <TargetsCard targets={withStale} />
+            <EventFeed events={events} />
           </div>
         </div>
+
+        <aside className="col-side">
+          <RobotCard id="writer" name="Writer" role="Explores the GPS-denied zone and drops beacons" robot={robots.writer} now={now} />
+          <RobotCard id="executor" name="Executor" role="Receives the mission and navigates with inherited beacons" robot={robots.executor} now={now} />
+          <MissionCard mission={mission} beacons={beacons} onCommand={sendCmd} />
+          <BeaconPanel
+            beacons={beacons}
+            selected={selectedBeacon}
+            onSelect={setSelectedBeacon}
+            onAssign={() => selectedBeacon && sendCmd('assign-mission', { beaconId: selectedBeacon, targetRobot: 'executor', objective: `Inspect ${selectedBeacon}` })}
+          />
+          <CommandLog pending={pending} acks={acks} onRequestStatus={() => sendCmd('request-status')} />
+        </aside>
       </main>
-    </>
+    </div>
   );
 }

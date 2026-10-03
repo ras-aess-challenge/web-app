@@ -1,0 +1,55 @@
+{
+  "configById": {
+    "3D!lmmap": {
+      "followTf": "base_link",
+      "scene": {},
+      "transforms": {},
+      "topics": {
+        "/scan": { "visible": true, "pointSize": 4, "colorField": "range", "colorMode": "colormap", "colorMap": "turbo" },
+        "/odom": { "visible": true }
+      },
+      "layers": {
+        "grid": { "layerId": "foxglove.Grid", "visible": true, "frameId": "odom", "size": 20, "divisions": 20, "lineWidth": 1, "color": "#248eff40", "position": [0, 0, 0], "rotation": [0, 0, 0], "order": 1 }
+      }
+    },
+    "DiagnosticSummary!lmdiag": {
+      "topicToRender": "/diagnostics",
+      "minLevel": 0,
+      "pinnedIds": [],
+      "hardwareIdFilter": "",
+      "sortByLevel": true
+    },
+    "Plot!lmbatt": {
+      "paths": [
+        { "value": "/battery_state.percentage", "enabled": true, "timestampMethod": "receiveTime" },
+        { "value": "/odom.twist.twist.linear.x", "enabled": true, "timestampMethod": "receiveTime" }
+      ],
+      "showLegend": true,
+      "isSynced": true,
+      "xAxisVal": "timestamp",
+      "followingViewWidth": 120
+    },
+    "RosOut!lmlog": {
+      "searchTerms": []
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": { "speed": 1 },
+  "layout": {
+    "direction": "row",
+    "first": "3D!lmmap",
+    "second": {
+      "direction": "column",
+      "first": "DiagnosticSummary!lmdiag",
+      "second": {
+        "direction": "column",
+        "first": "Plot!lmbatt",
+        "second": "RosOut!lmlog",
+        "splitPercentage": 55
+      },
+      "splitPercentage": 35
+    },
+    "splitPercentage": 55
+  }
+}

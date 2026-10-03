@@ -48,6 +48,19 @@ describe('wsClient', () => {
     expect(got.length).toBe(1);
   });
 
+  it('accepts reused ids after reconnect (backend restart resets msg ids)', () => {
+    const got = [];
+    const c = createWSClient({ url: 'ws://x', onEnvelope: (m) => got.push(m), onStatus: () => {} });
+    MockWS.instances[0].open();
+    MockWS.instances[0].recv({ kind: 'telemetry', id: 'msg-1', ts: '', source: 's', payload: {} });
+    MockWS.instances[0].close();
+    vi.advanceTimersByTime(2000);
+    MockWS.instances[1].open();
+    MockWS.instances[1].recv({ kind: 'telemetry', id: 'msg-1', ts: '', source: 's', payload: {} });
+    expect(got.length).toBe(2);
+    c.close();
+  });
+
   it('reconnects after close with backoff', () => {
     const status = [];
     const c = createWSClient({ url: 'ws://x', onEnvelope: () => {}, onStatus: (s) => status.push(s.ws) });

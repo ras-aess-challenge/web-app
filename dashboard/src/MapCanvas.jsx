@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 // Props: targets, robots, trails {writer:[], executor:[]}, beacons, events, mission, layers, selectedBeacon
 export default function MapCanvas({ targets, robots, trails, beacons, events, mission, layers, selectedBeacon }) {
   const ref = useRef(null);
-  const [view, setView] = useState({ scale: 40, ox: null, oy: null });
+  const [view, setView] = useState({ scale: 60, ox: null, oy: null });
 
   useEffect(() => {
     const cv = ref.current;
@@ -25,10 +25,10 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
     // trails — spatial memory
     if (layers.trails) {
       for (const [rid, pts] of Object.entries(trails)) {
-        ctx.strokeStyle = rid === 'writer' ? '#22b8cf' : '#a9e34b';
+        ctx.strokeStyle = rid === 'writer' ? '#22b8cf' : '#a9e34b'; ctx.lineWidth = 4;
         ctx.beginPath();
         pts.forEach((p, i) => { i ? ctx.lineTo(X(p.x), Y(p.y)) : ctx.moveTo(X(p.x), Y(p.y)); });
-        ctx.stroke();
+        ctx.stroke(); ctx.lineWidth = 1;
       }
     }
     // beacons
@@ -36,9 +36,9 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
       for (const b of Object.values(beacons)) {
         ctx.fillStyle = b.id === selectedBeacon ? '#ffd43b' : '#4dabf7';
         const bx = X(b.pos.x), by = Y(b.pos.y);
-        ctx.fillRect(bx - 7, by - 7, 14, 14);
-        ctx.fillStyle = '#9fb2c8'; ctx.font = '18px system-ui';
-        ctx.fillText(b.id, bx + 10, by + 4);
+        ctx.save(); ctx.translate(bx, by); ctx.rotate(Math.PI / 4); ctx.fillRect(-10, -10, 20, 20); ctx.restore();
+        ctx.fillStyle = '#e6edf5'; ctx.font = '600 22px system-ui';
+        ctx.fillText(b.id, bx + 18, by + 6);
       }
     }
     // events
@@ -71,10 +71,10 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
       const rx = X(r.pos.x), ry = Y(r.pos.y);
       ctx.save(); ctx.translate(rx, ry); ctx.rotate(-(r.theta || 0));
       ctx.fillStyle = rid === 'writer' ? '#22b8cf' : '#a9e34b';
-      ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-10, -9); ctx.lineTo(-10, 9); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(24, 0); ctx.lineTo(-16, -15); ctx.lineTo(-16, 15); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke(); ctx.lineWidth = 1;
       ctx.restore();
-      ctx.fillStyle = '#fff'; ctx.font = '20px system-ui';
-      ctx.fillText(rid, rx + 12, ry - 12);
+      ctx.fillStyle = '#fff'; ctx.font = '600 24px system-ui';
+      ctx.fillText(`${rid} · ${r.state}`, rx + 20, ry - 20);
     }
     // targets + uncertainty ellipses
     if (layers.targets) {
@@ -85,9 +85,9 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
         ctx.beginPath();
         ctx.ellipse(0, 0, t.uncertainty.sigmaX * scale * 2, t.uncertainty.sigmaY * scale * 2, 0, 0, Math.PI * 2);
         ctx.stroke(); ctx.restore();
-        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#9fb2c8'; ctx.font = '18px system-ui';
-        ctx.fillText(`${t.id} ${(t.confidence ?? 0).toFixed(2)}`, x + 10, y - 10);
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#e6edf5'; ctx.font = '600 22px system-ui';
+        ctx.fillText(`${t.id} ${((t.confidence ?? 0) * 100).toFixed(0)}%`, x + 14, y - 12);
       }
     }
     // scale bar: 2 m
@@ -98,11 +98,13 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-        <button onClick={() => setView((v) => ({ ...v, scale: Math.min(120, v.scale * 1.2) }))}>+</button>
-        <button onClick={() => setView((v) => ({ ...v, scale: Math.max(10, v.scale / 1.2) }))}>−</button>
-        <button onClick={() => setView({ scale: 40, ox: null, oy: null })}>reset</button>
-        <span style={{ color: '#9fb2c8' }}>drag to pan</span>
+      <div className="map-tools">
+        <div className="seg">
+          <button onClick={() => setView((v) => ({ ...v, scale: Math.min(120, v.scale * 1.2) }))}>+</button>
+          <button onClick={() => setView((v) => ({ ...v, scale: Math.max(10, v.scale / 1.2) }))}>−</button>
+          <button onClick={() => setView({ scale: 60, ox: null, oy: null })}>Reset</button>
+        </div>
+        <span className="muted small">local robot frame (meters, origin = writer start) · drag to pan</span>
       </div>
       <canvas
         ref={ref}

@@ -13,6 +13,9 @@ export function createWSClient({ url, onEnvelope, onStatus }) {
     ws = new WebSocket(url);
     ws.onopen = () => {
       attempt = 0;
+      // New connection = possibly a restarted backend whose message ids start
+      // again at msg-1. Keeping old ids would silently drop all fresh data.
+      seen.clear();
       onStatus?.({ ws: 'open', attempt, lastMsgAt });
       ws.send(JSON.stringify({ kind: 'cmd', id: `dash-${Date.now()}`, ts: new Date().toISOString(), source: 'dashboard', payload: { action: 'sync' } }));
     };

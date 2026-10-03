@@ -1,12 +1,12 @@
 // Dev-only stand-in for the ROS2->MQTT bridge. Looping scenario, self-healing:
 // continuous motion every second, beacon/mission roster republished on change
-// + 10 s heartbeat so backend restarts and late joiners converge.
+// + 3 s heartbeat so backend restarts and late joiners converge.
 // Run exactly ONE instance: npm run sim  (requires mosquitto; backend forwards to WS)
 import mqtt from 'mqtt';
 import { scenarioTick, signature } from './sim-scenario.js';
 
 const url = process.env.MQTT_URL || 'mqtt://localhost:1883';
-const HEARTBEAT_S = 10;
+const HEARTBEAT_S = 3; // < LIVE_MS (5 s) so a robot standing still still shows LIVE
 const id = `sim-${process.pid}`;
 const c = mqtt.connect(url);
 const t0 = Date.now();
