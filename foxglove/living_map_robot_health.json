@@ -1,15 +1,47 @@
 {
   "configById": {
     "3D!lmmap": {
-      "followTf": "base_link",
+      "followTf": "odom",
       "scene": {},
       "transforms": {},
       "topics": {
-        "/scan": { "visible": true, "pointSize": 4, "colorField": "range", "colorMode": "colormap", "colorMap": "turbo" },
-        "/odom": { "visible": true }
+        "/scan": {
+          "visible": true,
+          "pointSize": 4,
+          "colorField": "range",
+          "colorMode": "colormap",
+          "colorMap": "turbo"
+        },
+        "/odom": {
+          "visible": true,
+          "color": "#22b8cf"
+        },
+        "/executor/odom": {
+          "visible": true,
+          "color": "#a9e34b"
+        }
       },
       "layers": {
-        "grid": { "layerId": "foxglove.Grid", "visible": true, "frameId": "odom", "size": 20, "divisions": 20, "lineWidth": 1, "color": "#248eff40", "position": [0, 0, 0], "rotation": [0, 0, 0], "order": 1 }
+        "grid": {
+          "layerId": "foxglove.Grid",
+          "visible": true,
+          "frameId": "odom",
+          "size": 24,
+          "divisions": 24,
+          "lineWidth": 1,
+          "color": "#248eff40",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ],
+          "order": 1
+        }
       }
     },
     "DiagnosticSummary!lmdiag": {
@@ -19,10 +51,44 @@
       "hardwareIdFilter": "",
       "sortByLevel": true
     },
+    "RawMessages!lmexec": {
+      "topicPath": "/executor/status",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false
+    },
+    "RawMessages!lmtargets": {
+      "topicPath": "/ona/parsed_targets",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false
+    },
+    "RawMessages!lmbeacons": {
+      "topicPath": "/ona/beacons",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false
+    },
     "Plot!lmbatt": {
       "paths": [
-        { "value": "/battery_state.percentage", "enabled": true, "timestampMethod": "receiveTime" },
-        { "value": "/odom.twist.twist.linear.x", "enabled": true, "timestampMethod": "receiveTime" }
+        {
+          "value": "/battery_state.percentage",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/executor/odom.pose.pose.position.x",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        },
+        {
+          "value": "/executor/odom.pose.pose.position.y",
+          "enabled": true,
+          "timestampMethod": "receiveTime"
+        }
       ],
       "showLegend": true,
       "isSynced": true,
@@ -35,21 +101,38 @@
   },
   "globalVariables": {},
   "userNodes": {},
-  "playbackConfig": { "speed": 1 },
+  "playbackConfig": {
+    "speed": 1
+  },
   "layout": {
     "direction": "row",
-    "first": "3D!lmmap",
-    "second": {
+    "first": {
       "direction": "column",
-      "first": "DiagnosticSummary!lmdiag",
+      "first": "3D!lmmap",
+      "second": "Plot!lmbatt",
+      "splitPercentage": 62
+    },
+    "second": {
+      "direction": "row",
+      "first": {
+        "direction": "column",
+        "first": "DiagnosticSummary!lmdiag",
+        "second": {
+          "direction": "column",
+          "first": "RawMessages!lmexec",
+          "second": "RawMessages!lmtargets",
+          "splitPercentage": 40
+        },
+        "splitPercentage": 30
+      },
       "second": {
         "direction": "column",
-        "first": "Plot!lmbatt",
+        "first": "RawMessages!lmbeacons",
         "second": "RosOut!lmlog",
-        "splitPercentage": 55
+        "splitPercentage": 40
       },
-      "splitPercentage": 35
+      "splitPercentage": 50
     },
-    "splitPercentage": 55
+    "splitPercentage": 50
   }
 }
