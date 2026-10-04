@@ -27,7 +27,10 @@ class NetworkWriter(Node):
             return
         if self.pending is None:
             self.writer.x, self.writer.y = self.last_position
-            self.pending = self.writer.drop_node('VICTIM', 0.9)
+            # Alternate between VICTIM and FIRE for the ROS Demo
+            event_to_drop = 'FIRE' if len(self.writer.dropped_nodes) % 2 != 0 else 'VICTIM'
+            self.writer.x, self.writer.y = self.last_position
+            self.pending = self.writer.drop_node(event_to_drop, 0.9)
         try:
             node_id = send_node(self.pending)
             self.get_logger().info(f'Network confirmed {node_id}')
