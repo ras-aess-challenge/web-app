@@ -1,4 +1,5 @@
 import mqtt from 'mqtt';
+import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import { config } from './config.js';
 import { createGateway } from './gateway.js';
@@ -8,7 +9,13 @@ const bootAt = Date.now();
 let mqttUp = false;
 let droppedExtra = 0; // malformed WS frames counted here (gateway counts semantic drops)
 
-const wss = new WebSocketServer({ port: config.wsPort });
+const httpServer = createServer((req, res) => {
+  const healthy = mqttUp;
+  res.writeHead(req.url === '/health' ? (healthy ? 200 : 503) : 404, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: healthy ? 'ok' : 'unavailable', mqtt: mqttUp }));
+});
+httpServer.listen(config.wsPort, '0.0.0.0');
+const wss = new WebSocketServer({ server: httpServer, maxPayload: 16384 });
 wss.on('error', (e) => {
   if (e.code === 'EADDRINUSE') {
     console.error(`[backend] port ${config.wsPort} in use — another backend already running? Kill it or set WS_PORT.`);

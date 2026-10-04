@@ -73,6 +73,8 @@ class MqttOut:
     def _on_connect(self, *args):
         self.connected = True
         self.c.subscribe('cmd/#', qos=0)
+        if os.getenv('NETWORK_BEACONS') == '1':
+            self.c.subscribe([('beacons/#', 1), ('targets/#', 1)])
         self.log.info('MQTT connecte (abonne a cmd/#)')
 
     def _on_disconnect(self, *args):
@@ -81,6 +83,8 @@ class MqttOut:
 
     def _on_message(self, client, userdata, msg):
         try:
+            if msg.topic.startswith('cmd/') and msg.retain:
+                return
             self.commands.put((msg.topic, msg.payload.decode('utf-8', 'replace')))
         except Exception:  # noqa: BLE001
             pass
@@ -123,6 +127,8 @@ class RosMqttBridge(Node):
         self.create_subscription(LaserScan, '/scan', self.on_scan, qos_profile_sensor_data)
         self.create_subscription(Odometry, '/executor/odom', self.on_exec_odom, 10)
         self.create_subscription(String, '/executor/status', self.on_exec_status, 10)
+        self.network_target_pub = self.create_publisher(String, '/network/targets', 10)
+        self.network_beacon_pub = self.create_publisher(String, '/network/beacons', 10)
         self.exec_pub = self.create_publisher(String, '/executor/mission', 10)
 
         self.create_timer(0.5, self.tick_telemetry)
@@ -236,6 +242,15 @@ class RosMqttBridge(Node):
             self.handle_command(topic, text)
 
     def handle_command(self, topic, text):
+        if topic.startswith('targets/') and os.getenv('NETWORK_BEACONS') == '1':
+            self.network_target_pub.publish(String(data=text))
+            return
+        if topic.startswith('beacons/') and os.getenv('NETWORK_BEACONS') == '1':
+            payload = json.loads(text)
+            if isinstance(payload, dict) and isinstance(payload.get('id'), str) and isinstance(payload.get('pos'), dict):
+                self.beacons[payload['id']] = {'payload': payload, 'last_pub': time.time()}
+                self.network_beacon_pub.publish(String(data=json.dumps(payload)))
+            return
         parsed = core.parse_command(topic, text)
         if parsed is None:
             return
@@ -243,6 +258,9 @@ class RosMqttBridge(Node):
         now = time.time()
         beacons = {k: v['payload'] for k, v in self.beacons.items()}
         if action == 'assign-mission':
+            if self.missions.current and self.missions.current['status'] in ('pending', 'active'):
+                self.get_logger().warn('Executor busy: assignment rejected')
+                return
             res = self.missions.assign(payload, beacons, now)
             if res is None:
                 self.get_logger().warn(f"assign-mission ignoree : balise inconnue ({payload.get('beaconId')})")
@@ -282,7 +300,7 @@ class RosMqttBridge(Node):
             elif now - rec[1] >= KEEPALIVE_S:
                 self.out.publish(t, rec[0])
                 rec[1] = now
-        for b in self.beacons.values():
+        for b in ([] if os.getenv('NETWORK_BEACONS') == '1' else self.beacons.values()):
             if now - b['last_pub'] >= BEACON_KEEPALIVE_S:
                 self.out.publish(f"beacons/{b['payload']['id']}", b['payload'])
                 b['last_pub'] = now
@@ -293,7 +311,13 @@ class RosMqttBridge(Node):
 
     @guarded
     def tick_watchdog(self):
-        for ev in self.health.check_silence(time.time()):
+        now = time.time()
+        if os.getenv('ROS_HEALTH_FILE'):
+            path = os.environ['ROS_HEALTH_FILE']
+            with open(path + '.tmp', 'w') as f:
+                json.dump({'ts': now, 'mqtt': self.out.connected, 'odom': self.odom_t, 'executor': self.exec_t}, f)
+            os.replace(path + '.tmp', path)
+        for ev in self.health.check_silence(now):
             self.emit_event(ev)
 
 

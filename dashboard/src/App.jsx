@@ -7,7 +7,7 @@ import {
   ROBOT_COLORS, ageMs, fmtAge,
 } from './panels.jsx';
 const OlMap = lazy(() => import('./OlMap.jsx'));
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:4311';
+const WS_URL = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
 function Pill({ label, value, state = 'idle' }) {
   return (
