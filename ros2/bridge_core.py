@@ -225,7 +225,7 @@ class HealthTracker:
 
 
 # ---------- /ona/beacons -> beacons/<id> (+ evenement a la 1re detection) ----------
-EVENT_TYPES = ('hazard', 'victim', 'obstacle', 'system')
+EVENT_TYPES = ('hazard', 'victim', 'obstacle', 'system', 'fire')
 SEVERITIES = ('info', 'warn', 'critical')
 
 
