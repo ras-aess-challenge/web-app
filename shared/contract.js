@@ -13,7 +13,7 @@ export const WS_KINDS = Object.freeze([
 ]);
 
 export const TARGET_SOURCES = Object.freeze(['writer', 'executor', 'ona']);
-export const EVENT_TYPES = Object.freeze(['hazard', 'victim', 'obstacle', 'system']);
+export const EVENT_TYPES = Object.freeze(['hazard', 'victim', 'obstacle', 'system', 'fire']);
 export const SEVERITIES = Object.freeze(['info', 'warn', 'critical']);
 
 // Telemetry payload: { id/robotId, pos:{x,y}, theta?, batteryPct?, state?, ts }
