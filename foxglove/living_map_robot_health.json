@@ -59,14 +59,14 @@
       "showFullMessageForDiff": false
     },
     "RawMessages!lmtargets": {
-      "topicPath": "/network/targets",
+      "topicPath": "/ona/parsed_targets",
       "diffEnabled": false,
       "diffMethod": "custom",
       "diffTopicPath": "",
       "showFullMessageForDiff": false
     },
     "RawMessages!lmbeacons": {
-      "topicPath": "/network/beacons",
+      "topicPath": "/ona/beacons",
       "diffEnabled": false,
       "diffMethod": "custom",
       "diffTopicPath": "",

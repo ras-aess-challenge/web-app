@@ -10,6 +10,7 @@ export const WS_KINDS = Object.freeze([
   'ona.status',
   'cmd',
   'cmd.ack',
+  'map.reset',
 ]);
 
 export const TARGET_SOURCES = Object.freeze(['writer', 'executor', 'ona']);
@@ -98,7 +99,7 @@ export function normalizeMission(raw) {
   };
 }
 
-export const COMMAND_ACTIONS = Object.freeze(['sync', 'assign-mission', 'cancel-mission', 'request-status']);
+export const COMMAND_ACTIONS = Object.freeze(['sync', 'assign-mission', 'cancel-mission', 'request-status', 'reset-map', 'set-zone']);
 
 // Dashboard -> backend command envelope validation. Returns { id, action, rest } or null.
 export function validateCommand(msg) {
@@ -107,6 +108,7 @@ export function validateCommand(msg) {
   if (Number.isNaN(Date.parse(msg.ts))) return null;
   const action = msg.payload?.action;
   if (!COMMAND_ACTIONS.includes(action)) return null;
+  if (action === 'set-zone' && !validPolygon(msg.payload.polygon)) return null;
   return { id: msg.id, action, payload: msg.payload };
 }
 
@@ -143,4 +145,12 @@ export function normalizeTarget(raw) {
       angleDeg: typeof u.angleDeg === 'number' ? u.angleDeg : 0,
     },
   };
+}
+
+// Match the simulator limits before forwarding a polygon to ROS.
+export function validPolygon(poly) {
+  if (!Array.isArray(poly) || poly.length < 3 || poly.length > 16) return false;
+  if (!poly.every(p => Array.isArray(p) && p.length === 2 && p.every(v => Number.isFinite(v) && Math.abs(v) <= 5000))) return false;
+  const area = poly.reduce((a, p, i) => { const q = poly[(i + 1) % poly.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0);
+  return Math.abs(area) >= 8;
 }

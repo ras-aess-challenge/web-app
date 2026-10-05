@@ -29,3 +29,8 @@ export function fmtGps(pos) {
   const { lat, lon } = toGps(pos.x, pos.y);
   return `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
 }
+
+/** Inverse of toMap: EPSG:3857 coordinates to local meters. */
+export function fromMap(mx, my) {
+  return [(mx - ANCHOR_MERC[0]) / MERC_PER_M, (my - ANCHOR_MERC[1]) / MERC_PER_M];
+}

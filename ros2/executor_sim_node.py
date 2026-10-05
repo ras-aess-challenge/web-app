@@ -19,6 +19,7 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from std_msgs.msg import String
 
+import zone
 from executor_logic import ExecutorModel
 
 
@@ -29,10 +30,27 @@ class ExecutorSim(Node):
         self.odom_pub = self.create_publisher(Odometry, '/executor/odom', 10)
         self.status_pub = self.create_publisher(String, '/executor/status', 10)
         self.create_subscription(String, '/executor/mission', self.on_mission, 10)
+        self.create_subscription(String, '/sim/reset', self.on_reset, 10)
+        self.create_subscription(String, '/sim/zone', self.on_zone, 10)
         self.last = time.time()
         self.create_timer(0.1, self.tick)
         self.create_timer(0.5, self.publish_status)
         self.get_logger().info('Faux Executor pret : mission sur /executor/mission')
+
+    def on_reset(self, _msg):
+        self.model.reset()
+        self.get_logger().info('reset : Executor retourne a la base')
+        self.publish_status()
+
+    def on_zone(self, msg):
+        try:
+            ok = zone.set_polygon(json.loads(msg.data).get('polygon'))
+        except (ValueError, AttributeError):
+            ok = False
+        if ok:
+            self.model.reset(home=zone.home())
+            self.get_logger().info('nouvelle zone recue : Executor retourne a la base de la zone')
+            self.publish_status()
 
     def on_mission(self, msg):
         try:

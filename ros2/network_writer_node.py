@@ -3,6 +3,7 @@ import os
 import time
 import rclpy
 from nav_msgs.msg import Odometry
+from std_msgs.msg import String
 from rclpy.node import Node
 from writer import Writer
 from writer_client import send_node
@@ -16,7 +17,13 @@ class NetworkWriter(Node):
         self.interval = float(os.getenv('ROS_BEACON_INTERVAL', '30'))
         self.last_delivery = time.time() - self.interval
         self.create_subscription(Odometry, '/odom', self.odometry, 10)
+        self.create_subscription(String, '/sim/reset', self.on_reset, 10)
         self.create_timer(1.0, self.deliver)
+
+    def on_reset(self, _message):
+        self.pending = None
+        self.last_position = None
+        self.last_delivery = time.time()
 
     def odometry(self, message):
         p = message.pose.pose.position

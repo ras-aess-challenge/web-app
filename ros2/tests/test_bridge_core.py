@@ -205,3 +205,88 @@ def test_executor_cancel_goes_home():
     assert m.mission_status == 'cancelled' and m.state == 'returning'
     m.cancel('M-OTHER')   # mauvais id : ignore
     assert m.state == 'returning'
+
+
+def test_auto_dispatcher_orders_by_severity_then_arrival_and_visits_once():
+    d = core.AutoDispatcher()
+    d.add('B-1', 'warn'); d.add('B-2', 'critical'); d.add('B-3', 'warn'); d.add('B-2', 'critical')
+    assert d.next(mission_busy=True) is None            # Executor occupe : on attend
+    assert [d.next(False), d.next(False), d.next(False)] == ['B-2', 'B-1', 'B-3']
+    assert d.next(False) is None
+    d.add('B-2', 'critical')                            # deja visitee : ignoree
+    assert d.next(False) is None
+
+
+def test_auto_dispatcher_manual_assignment_and_disable():
+    d = core.AutoDispatcher()
+    d.add('B-1'); d.mark('B-1')                         # envoyee a la main -> pas de doublon auto
+    assert d.next(False) is None
+    off = core.AutoDispatcher(enabled=False)
+    off.add('B-9', 'critical')
+    assert off.next(False) is None
+
+
+def test_mission_busy_only_while_pending_or_active():
+    mt = core.MissionTracker()
+    assert not mt.busy()
+    mt.assign({'beaconId': 'B-1'}, {'B-1': {'pos': {'x': 0, 'y': 0}}}, NOW)
+    assert mt.busy()
+    mt.on_executor_status({'mission_id': mt.current['id'], 'mission_status': 'active'}, NOW)
+    assert mt.busy()
+    mt.on_executor_status({'mission_id': mt.current['id'], 'mission_status': 'done'}, NOW)
+    assert not mt.busy()
+
+
+# ---------- zone d'evolution ----------
+def test_zone_polygon_validation_and_membership():
+    import zone
+    assert zone.valid_polygon([[0, 0], [1, 1]]) is None                       # < 3 sommets
+    assert zone.valid_polygon([[0, 0], [1, 0], [2, 0]]) is None               # surface nulle
+    assert zone.valid_polygon([[0, 0], [1, 'x'], [2, 3]]) is None
+    assert zone.valid_polygon([[0, 0], [float('inf'), 0], [0, 5]]) is None
+    saved = zone.polygon()
+    try:
+        assert zone.set_polygon([[0, 0], [10, 0], [10, 6], [0, 6]])
+        assert zone.contains(5, 3) and not zone.contains(11, 3) and not zone.contains(0.2, 3, margin=0.5)
+        assert zone.contains(*zone.home())
+    finally:
+        zone.set_polygon(saved)
+
+
+def test_writer_never_leaves_a_non_rectangular_zone():
+    import random
+    import zone
+    import writer_logic
+    saved = zone.polygon()
+    try:
+        # quadrilatere penche (comme un batiment le long d'une rue)
+        assert zone.set_polygon([[-8, -3], [6, -9], [10, 4], [-4, 9]])
+        w = writer_logic.RandomWalker(random.Random(3))
+        for _ in range(20000):
+            w.tick(0.1)
+            assert zone.contains(w.x, w.y, margin=-1e-3)
+        rng = random.Random(5)
+        assert all(zone.contains(*zone.random_point(rng)) for _ in range(500))
+    finally:
+        zone.set_polygon(saved)
+
+
+def test_default_zone_contains_executor_home():
+    import zone
+    assert zone.contains(*ex.HOME)
+
+
+def test_concave_zone_home_and_writer_stay_inside():
+    import random
+    import zone
+    from writer_logic import RandomWalker
+    saved = zone.polygon()
+    try:
+        assert zone.set_polygon([[0, 0], [8, 0], [8, 2], [2, 2], [2, 8], [0, 8]])
+        assert zone.contains(*zone.home())
+        walker = RandomWalker(random.Random(4))
+        for _ in range(3000):
+            walker.tick(0.1)
+            assert zone.contains(walker.x, walker.y, margin=-1e-6)
+    finally:
+        zone.set_polygon(saved)

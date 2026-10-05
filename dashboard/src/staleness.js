@@ -41,3 +41,15 @@ export function grownSigma(sigma0, ageMs, d = DECAY) {
   const grow = 1 - decayFactor(ageMs, d.LAMBDA); // 0 -> 1
   return sigma0 * (1 + d.GROWTH * grow);
 }
+
+// ---- Ellipse display: small, and dropped once the data is too old ------------------------------
+// The *probability* keeps decaying in the target list; the map just stops drawing a huge circle.
+export const ELLIPSE = {
+  SCALE: Number(import.meta.env?.VITE_ELLIPSE_SCALE ?? 1),     // display size factor (1 = full 2-sigma)
+  HIDE_S: Number(import.meta.env?.VITE_ELLIPSE_HIDE_S ?? 15),    // no ellipse once older than this (s); 0 = never hide
+};
+
+/** Draw the uncertainty ellipse only while the report is recent enough. */
+export function ellipseVisible(ageMs, e = ELLIPSE) {
+  return !(e.HIDE_S > 0 && ageMs > e.HIDE_S * 1000);
+}

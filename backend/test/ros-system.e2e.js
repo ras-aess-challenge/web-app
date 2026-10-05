@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
+import { readBeacons } from '../src/network-bridge-core.js';
 
 function connect(url, protocol) {
   const socket = new WebSocket(url, protocol);
@@ -63,4 +64,19 @@ test('ROS writer beacon travels through authenticated network; dashboard assigns
   send('ros-cancel', {action:'cancel-mission',missionId:next.payload.id});
   await waitFor(dashboard.messages,m=>m.kind==='mission'&&m.payload.id===next.payload.id&&m.payload.status==='cancelled');
   console.log(`ROS mission ${next.payload.id}: cancellation confirmed`);
+  const network = { host: 'strong-node', port: 65432, secret: process.env.SHARED_SECRET };
+  const storedBefore = await readBeacons(network);
+  const offset = dashboard.messages.length;
+  send('ros-reset', { action: 'reset-map' });
+  const reset = await waitFor(dashboard.messages, m => dashboard.messages.indexOf(m) >= offset && m.kind === 'map.reset');
+  assert.equal(reset.payload.scope, 'network');
+  await new Promise(resolve => setTimeout(resolve, 2500));
+  const syncOffset = dashboard.messages.length;
+  send('ros-sync-after-reset', { action: 'sync' });
+  await waitFor(dashboard.messages, m => m.kind === 'cmd.ack' && m.payload.ackFor === 'ros-sync-after-reset');
+  const snapshot = dashboard.messages.slice(syncOffset);
+  assert.ok(snapshot.some(m => m.kind === 'map.reset'));
+  assert.ok(!snapshot.some(m => ['beacon', 'target', 'mission'].includes(m.kind)), 'old retained data does not repopulate a reset');
+  assert.deepEqual(await readBeacons(network), storedBefore, 'Reset map preserves every durable beacon');
+  console.log('Integrated Reset map: confirmed, historical replay blocked, durable storage unchanged');
 });

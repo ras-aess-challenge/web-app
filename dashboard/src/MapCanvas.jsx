@@ -1,9 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
+import { ELLIPSE, ellipseVisible } from './staleness.js';
+import { ring as zoneRingOf } from './zone.js';
 
 // Props: targets, robots, trails {writer:[], executor:[]}, beacons, events, mission, layers, selectedBeacon
-export default function MapCanvas({ targets, robots, trails, beacons, events, mission, layers, selectedBeacon }) {
+export default function MapCanvas({ targets, robots, trails, beacons, events, mission, layers, selectedBeacon, zone }) {
   const ref = useRef(null);
   const [view, setView] = useState({ scale: 60, ox: null, oy: null });
+
+  const fitZone = () => {
+    if (!ref.current || !zone?.length) return;
+    const xs = zone.map(p => p[0]), ys = zone.map(p => p[1]);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    const width = ref.current.clientWidth * 2;
+    const scale = Math.min(width / (Math.max(...xs) - Math.min(...xs) + 6), 960 / (Math.max(...ys) - Math.min(...ys) + 6));
+    setView({ scale, ox: width / 2 - cx * scale, oy: 480 + cy * scale });
+  };
+  useEffect(fitZone, [zone]);
 
   useEffect(() => {
     const cv = ref.current;
@@ -22,6 +35,11 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
     ctx.beginPath(); ctx.moveTo(ox - 20, oy); ctx.lineTo(ox + 20, oy); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(ox, oy - 20); ctx.lineTo(ox, oy + 20); ctx.stroke();
 
+    // robots' allowed area (shared/zone.json)
+    ctx.save(); ctx.strokeStyle = '#ffb020'; ctx.lineWidth = 3; ctx.setLineDash([16, 12]); ctx.beginPath();
+    zoneRingOf(zone || []).forEach(([x, y], i) => (i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))));
+    ctx.stroke(); ctx.restore();
+
     // trails — spatial memory
     if (layers.trails) {
       for (const [rid, pts] of Object.entries(trails)) {
@@ -38,7 +56,7 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
         const bx = X(b.pos.x), by = Y(b.pos.y);
         ctx.save(); ctx.translate(bx, by); ctx.rotate(Math.PI / 4); ctx.fillRect(-10, -10, 20, 20); ctx.restore();
         ctx.fillStyle = '#e6edf5'; ctx.font = '600 22px system-ui';
-        ctx.fillText(b.id, bx + 18, by + 6);
+        if (b.id === selectedBeacon) ctx.fillText(b.id, bx + 18, by + 6);
       }
     }
     // events
@@ -65,6 +83,12 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
       ctx.beginPath(); ctx.arc(X(mpos.x), Y(mpos.y), 16, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(X(mpos.x) - 7, Y(mpos.y)); ctx.lineTo(X(mpos.x) - 1, Y(mpos.y) + 6); ctx.lineTo(X(mpos.x) + 8, Y(mpos.y) - 6); ctx.stroke();
     }
+    const occupiedLabels = [];
+    const drawLabel = (text, x, y) => {
+      const box = { x, y: y - 24, w: ctx.measureText(text).width, h: 30 };
+      if (occupiedLabels.some(b => box.x < b.x + b.w && box.x + box.w > b.x && box.y < b.y + b.h && box.y + box.h > b.y)) return;
+      occupiedLabels.push(box); ctx.fillText(text, x, y);
+    };
     // robots as oriented triangles
     for (const [rid, r] of Object.entries(robots)) {
       if (!r) continue;
@@ -74,7 +98,7 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
       ctx.beginPath(); ctx.moveTo(24, 0); ctx.lineTo(-16, -15); ctx.lineTo(-16, 15); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke(); ctx.lineWidth = 1;
       ctx.restore();
       ctx.fillStyle = '#fff'; ctx.font = '600 24px system-ui';
-      ctx.fillText(`${rid} · ${r.state}`, rx + 20, ry - 20);
+      drawLabel(`${rid} · ${r.state}`, rx + 20, ry - 20);
     }
     // targets + uncertainty ellipses
     if (layers.targets) {
@@ -82,12 +106,15 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
         const x = X(t.pos.x), y = Y(t.pos.y);
         ctx.save(); ctx.translate(x, y); ctx.rotate((-t.uncertainty.angleDeg * Math.PI) / 180);
         ctx.strokeStyle = t._stale === 'LOST' ? '#ff5252' : t._stale === 'STALE' ? '#ffb020' : '#35d07f';
-        ctx.beginPath();
-        ctx.ellipse(0, 0, (t._sigmaX ?? t.uncertainty.sigmaX) * scale * 2, (t._sigmaY ?? t.uncertainty.sigmaY) * scale * 2, 0, 0, Math.PI * 2);
-        ctx.stroke(); ctx.restore();
+        if (ellipseVisible(t._ageMs ?? 0)) {
+          ctx.beginPath();
+          ctx.ellipse(0, 0, (t._sigmaX ?? t.uncertainty.sigmaX) * scale * 2 * ELLIPSE.SCALE, (t._sigmaY ?? t.uncertainty.sigmaY) * scale * 2 * ELLIPSE.SCALE, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
         ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = '#e6edf5'; ctx.font = '600 22px system-ui';
-        ctx.fillText(`${t.id} PoD ${(((t._pod ?? t.confidence) ?? 0) * 100).toFixed(0)}%${t._rescout ? ' · RE-SCOUT' : ''}`, x + 14, y - 12 + ([-1, 0, 1][ti % 3]) * 26);
+        drawLabel(`${t.id} PoD ${(((t._pod ?? t.confidence) ?? 0) * 100).toFixed(0)}%${t._rescout ? ' · RE-SCOUT' : ''}`, x + 14, y - 12 + ([-1, 0, 1][ti % 3]) * 26);
       }
     }
     // scale bar: 2 m
@@ -102,7 +129,7 @@ export default function MapCanvas({ targets, robots, trails, beacons, events, mi
         <div className="seg">
           <button onClick={() => setView((v) => ({ ...v, scale: Math.min(120, v.scale * 1.2) }))}>+</button>
           <button onClick={() => setView((v) => ({ ...v, scale: Math.max(10, v.scale / 1.2) }))}>−</button>
-          <button onClick={() => setView({ scale: 60, ox: null, oy: null })}>Reset</button>
+          <button onClick={fitZone}>Fit zone</button>
         </div>
         <span className="muted small">local robot frame (meters, origin = writer start) · drag to pan</span>
       </div>

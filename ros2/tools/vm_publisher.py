@@ -4,7 +4,7 @@ import json, math, sys, time
 from datetime import datetime, timezone
 import paho.mqtt.client as mqtt
 
-BROKER = sys.argv[1] if len(sys.argv) > 1 else "192.168.190.1"
+BROKER = sys.argv[1] if len(sys.argv) > 1 else "localhost"
 
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")

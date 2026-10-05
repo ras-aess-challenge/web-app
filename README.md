@@ -10,8 +10,9 @@ cd ../docker
 docker compose up -d --build --wait --wait-timeout 180
 ```
 
-Open **http://localhost:5173**, select an automatically generated writer beacon
-and assign it to the ROS Executor. Mission progress, inspection, completion and
+Open **http://localhost:5173**. The ROS Executor automatically visits Writer beacons.
+Set `AUTO_DISPATCH=0` in `docker/.env` and recreate the services to select and assign
+beacons manually. Mission progress, inspection, completion and
 cancellation return through MQTT and the dashboard WebSocket. Connect Foxglove
 to **ws://localhost:8765** for live sensors.
 
@@ -19,3 +20,8 @@ See the [full ROS integration](../docs/ros-integration.md),
 [run guide](../docs/run-guide.md), and [data contract](../docs/webapp-contract.md).
 The Python-only alternative and separate fake-ONA demo remain available; explicit
 Compose files select them. The main `.env` selects the full ROS deployment.
+
+The integrated Writer now explores the configured polygon in `shared/zone.json`.
+See [simulation controls](docs/simulation.md) for the standalone demo, zone drawing,
+reset semantics and optional automatic dispatch. The [migration report](docs/migration-report.md)
+records the architecture comparison and verification results.

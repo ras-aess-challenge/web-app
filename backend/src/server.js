@@ -4,7 +4,7 @@ import { WebSocketServer } from 'ws';
 import { config } from './config.js';
 import { createGateway } from './gateway.js';
 
-const gateway = createGateway({ snapshotCap: config.snapshotCap });
+const gateway = createGateway({ snapshotCap: config.snapshotCap, simulationCommands: config.simulationCommands });
 const bootAt = Date.now();
 let mqttUp = false;
 let droppedExtra = 0; // malformed WS frames counted here (gateway counts semantic drops)
@@ -39,6 +39,7 @@ function statusEnvelope(heartbeat = false) {
       dropped: gateway.stats.dropped + droppedExtra,
       heartbeat, uptimeS: Math.floor((Date.now() - bootAt) / 1000),
       tracked: gateway.stats.tracked,
+      simulationCommands: config.simulationCommands,
     },
   });
 }
@@ -82,9 +83,7 @@ export function start({ mqttUrl = config.mqttUrl } = {}) {
 // Publish dashboard commands back to MQTT: cmd/<action>. Validated; invalid + sync dropped.
 export function wireCommands(mqttClient) {
   onCommand((msg) => {
-    const { forwardToMqtt } = gateway.handleMessage(msg);
-    // handleMessage already validated; sync returns forwardToMqtt=null
-    if (!forwardToMqtt) return;
+    // Only validated, forwardable commands reach this callback.
     const action = msg.payload?.action || 'unknown';
     mqttClient?.publish(`${config.cmdTopicPrefix}${action}`, JSON.stringify(msg));
   });

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
+import { useEffect, useMemo, useState, useCallback, lazy, Suspense } from 'react';
 import { createWSClient } from './wsClient.js';
 import { targetAge, classifyStaleness, currentPod, grownSigma, DECAY } from './staleness.js';
 import MapCanvas from './MapCanvas.jsx';
+import { defaultPolygon } from './zone.js';
+import { visibleMapData } from './mapVisibility.js';
 import {
   RobotCard, MissionCard, TargetsCard, BeaconPanel, EventFeed, CommandLog, SystemChain,
   ROBOT_COLORS, ageMs, fmtAge,
@@ -45,8 +47,10 @@ export default function App() {
   const [conn, setConn] = useState({ ws: 'connecting', lastMsgAt: null });
   const [now, setNow] = useState(Date.now());
   const [client, setClient] = useState(null);
-  const [layers, setLayers] = useState({ trails: true, beacons: true, events: true, targets: true });
+  const [layers, setLayers] = useState({ trails: true, beacons: true, events: true, targets: true, history: false });
   const [selectedBeacon, setSelectedBeacon] = useState(null);
+  const [zone, setZone] = useState(defaultPolygon);
+  const [mapKey, setMapKey] = useState(0);
   const [mapMode, setMapMode] = useState('openlayers'); // openlayers | canvas
 
   useEffect(() => {
@@ -54,7 +58,11 @@ export default function App() {
       url: WS_URL,
       onStatus: (s) => setConn((p) => ({ ...p, ...s })),
       onEnvelope: (m) => {
-        if (m.kind === 'target') setTargets((p) => ({ ...p, [m.payload.id]: m.payload }));
+        if (m.kind === 'map.reset') {
+          setTargets({}); setRobots({}); setTrails({ writer: [], executor: [] }); setBeacons({});
+          setEvents([]); setMission(null); setSelectedBeacon(null);
+          setZone(m.payload.polygon); setMapKey(k => k + 1);
+        } else if (m.kind === 'target') setTargets((p) => ({ ...p, [m.payload.id]: m.payload }));
         else if (m.kind === 'telemetry') {
           setRobots((p) => ({ ...p, [m.payload.id]: m.payload }));
           setTrails((p) => {
@@ -82,7 +90,7 @@ export default function App() {
     return () => clearInterval(t);
   }, []);
 
-  const sendCmd = (action, extra = {}) => {
+  const sendCmd = useCallback((action, extra = {}) => {
     const id = `dash-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     setPending((p) => ({ ...p, [id]: { action, at: new Date().toISOString() } }));
     client?.send({
@@ -91,7 +99,8 @@ export default function App() {
     });
     // expire pending after 10s (no ack -> show timeout)
     setTimeout(() => setPending((p) => (p[id] ? { ...p, [id]: { ...p[id], timeout: true } } : p)), 10000);
-  };
+  }, [client]);
+  const setSimulationZone = useCallback(polygon => sendCmd('set-zone', { polygon }), [sendCmd]);
 
   const withStale = useMemo(() => Object.fromEntries(
     Object.entries(targets).map(([id, t]) => {
@@ -123,7 +132,7 @@ export default function App() {
   const linkState = conn.ws === 'open' ? 'LIVE' : conn.ws === 'connecting' ? 'STALE' : 'LOST';
   const onaState = !ona ? 'idle' : ona.ona === 'connected' ? 'LIVE' : 'LOST';
 
-  const mapProps = { targets: withStale, robots, trails, beacons, events, mission, layers, selectedBeacon };
+  const mapProps = { robots, trails, mission, layers, selectedBeacon, zone, ...visibleMapData({ targets: withStale, beacons, events, layers, selectedBeacon, mission, now }) };
 
   return (
     <div className="app">
@@ -143,6 +152,7 @@ export default function App() {
           <Pill label="Dropped" value={ona?.dropped ?? '—'} state={ona?.dropped ? 'STALE' : 'idle'} />
           {Object.keys(pending).length > 0 && <Pill label="Pending" value={Object.keys(pending).length} state="STALE" />}
           {critCount > 0 && <Pill label="Critical" value={critCount} state="LOST" />}
+          <button className="btn btn-danger btn-reset" disabled={conn.ws !== 'open' || ona?.ona !== 'connected'} onClick={() => sendCmd('reset-map')} title="Clear the current map and restart robot simulation; stored beacons are preserved">Reset map</button>
           <span className="clock">{new Date(now).toLocaleTimeString()}</span>
         </div>
       </header>
@@ -171,10 +181,10 @@ export default function App() {
             </div>
             {mapMode === 'openlayers' ? (
               <Suspense fallback={<div className="map-loading">loading map…</div>}>
-                <OlMap {...mapProps} />
+                <OlMap key={mapKey} {...mapProps} onZone={ona?.simulationCommands ? setSimulationZone : null} />
               </Suspense>
             ) : (
-              <MapCanvas {...mapProps} />
+              <MapCanvas key={mapKey} {...mapProps} />
             )}
             <Legend />
           </section>

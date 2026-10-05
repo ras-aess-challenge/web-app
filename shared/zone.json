@@ -1,0 +1,21 @@
+{
+  "_comment": "Canonical default simulation polygon in local meters around the map anchor. Used by dashboard and ROS; edit and rebuild to change the permanent default.",
+  "polygon": [
+    [
+      -27.7,
+      30.7
+    ],
+    [
+      -3.0,
+      33.0
+    ],
+    [
+      0.4,
+      -2.4
+    ],
+    [
+      -27.5,
+      -4.5
+    ]
+  ]
+}

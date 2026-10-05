@@ -3,15 +3,25 @@
 import { toEnvelope, } from './normalize.js';
 import { validateCommand } from '../../shared/contract.js';
 
-export function createGateway({ snapshotCap = 500 } = {}) {
+export function createGateway({ snapshotCap = 500, simulationCommands = false } = {}) {
   let seq = 0;
   const nextSeq = () => ++seq;
   const latestById = new Map();
+  let mapState = null;
+  const snapshot = () => [...(mapState ? [mapState] : []), ...latestById.values()];
   let dropped = 0;
 
   function ingest(topic, raw) {
     const env = toEnvelope(topic, raw, nextSeq);
     if (!env) { dropped++; return null; }
+    if (env.kind === 'map.reset') {
+      if (mapState && Date.parse(env.payload.ts) < Date.parse(mapState.payload.ts)) return null;
+      latestById.clear();
+      mapState = env;
+      return env;
+    }
+    // Stored/retained historical records must not repopulate a reset session.
+    if (mapState && Date.parse(env.payload.ts) < Date.parse(mapState.payload.ts)) return null;
     const pid = env.payload?.id;
     if (pid) latestById.set(`${env.kind}:${pid}`, env);
     while (latestById.size > snapshotCap) latestById.delete(latestById.keys().next().value);
@@ -23,11 +33,14 @@ export function createGateway({ snapshotCap = 500 } = {}) {
   function handleMessage(msg) {
     const cmd = validateCommand(msg);
     if (cmd && cmd.action === 'sync') {
-      const snap = [...latestById.values()];
+      const snap = snapshot();
       return {
-        replies: [...snap, ack(cmd.id, 'synced', { count: latestById.size })],
+        replies: [...snap, ack(cmd.id, 'synced', { count: snap.length })],
         forwardToMqtt: null,
       };
+    }
+    if (cmd && cmd.action === 'set-zone' && !simulationCommands) {
+      return { replies: [ack(msg.id, 'rejected', { action: cmd.action, reason: 'Simulation controls are disabled for persistent network deployments' })], forwardToMqtt: null };
     }
     if (cmd) {
       return { replies: [ack(msg.id, 'received', { action: cmd.action })], forwardToMqtt: msg };
@@ -54,7 +67,7 @@ export function createGateway({ snapshotCap = 500 } = {}) {
 
   return {
     ingest, handleMessage,
-    get snapshot() { return [...latestById.values()]; },
+    get snapshot() { return snapshot(); },
     get stats() { return { dropped, tracked: latestById.size, seq }; },
   };
 }

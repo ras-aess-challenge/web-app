@@ -150,6 +150,11 @@ export function BeaconPanel({ beacons, selected, onSelect, onAssign }) {
   const list = Object.values(beacons);
   return (
     <Card title={`Beacons (${list.length})`}>
+      <div className="actions">
+        <button className="btn btn-primary" disabled={!selected} onClick={onAssign}>
+          {selected ? `Send Executor to ${selected}` : 'Select a beacon to assign a mission'}
+        </button>
+      </div>
       {list.length === 0 && <div className="muted">None yet — beacons dropped by the Writer appear here.</div>}
       {list.map((b) => (
         <button key={b.id} className={`beacon ${b.id === selected ? 'selected' : ''}`} onClick={() => onSelect?.(b.id === selected ? null : b.id)}>
@@ -161,11 +166,6 @@ export function BeaconPanel({ beacons, selected, onSelect, onAssign }) {
           <span className="muted small">{fmtGps(b.pos)} · by {b.source} at {new Date(b.ts).toLocaleTimeString()}</span>
         </button>
       ))}
-      <div className="actions">
-        <button className="btn btn-primary" disabled={!selected} onClick={onAssign}>
-          {selected ? `Send Executor to ${selected}` : 'Select a beacon to assign a mission'}
-        </button>
-      </div>
     </Card>
   );
 }

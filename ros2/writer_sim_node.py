@@ -1,22 +1,46 @@
 #!/usr/bin/env python3
-"""Faux Writer ROS 2 (Humble) pour tester Foxglove sans le vrai robot.
-/odom 10 Hz, /tf, /scan 5 Hz, /battery_state 1 Hz, /diagnostics 1 Hz.
-Pannes simulees : lidar coupe 10 s chaque minute, batterie WARN <30 %, ERROR <15 %."""
+"""
+Faux Writer ROS 2 (Humble) pour tester Foxglove sans le vrai robot.
+
+Publie les memes topics que le vrai robot :
+  /odom           nav_msgs/Odometry                10 Hz  (promenade aleatoire dans la zone shared/zone.json)
+  /tf             odom -> base_link                10 Hz
+  /scan           sensor_msgs/LaserScan             5 Hz  (grand bloc + un debris)
+  /battery_state  sensor_msgs/BatteryState          1 Hz
+  /diagnostics    diagnostic_msgs/DiagnosticArray   1 Hz  (battery, lidar, motors)
+
+Injecte volontairement des pannes, pour verifier qu'on les voit dans Foxglove :
+  - chaque minute, le lidar "tombe" pendant 10 s : /scan s'arrete, diagnostic ERROR
+  - la batterie se vide : WARN sous 30 %, ERROR sous 15 %, puis elle est "changee" a 5 %
+
+Lancer :
+  source /opt/ros/humble/setup.bash
+  python3 writer_sim_node.py
+"""
+import json
 import math
+import os
+import random
+
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import TransformStamped
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan, BatteryState
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
+from std_msgs.msg import String
 from tf2_ros import TransformBroadcaster
 
-ROOM_X, ROOM_Y = 6.0, 5.0
-DEBRIS = (1.5, 0.5, 0.5)
+import zone
+from writer_logic import RandomWalker
+
+ROOM_X = ROOM_Y = 30.0   # murs (recalcules autour de la zone)
+DEBRIS = (1.5, 0.5, 0.5)       # obstacle : x, y, rayon (m)
 LIDAR_PERIOD, LIDAR_DOWN = 60.0, 10.0
 
 
 def ray_range(x, y, ang, max_range):
+    """Distance du robot (x, y) au premier obstacle dans la direction ang."""
     c, s = math.cos(ang), math.sin(ang)
     best = max_range
     if abs(c) > 1e-9:
@@ -42,6 +66,9 @@ class FakeWriter(Node):
     def __init__(self):
         super().__init__('writer_sim')
         self.t0 = self.get_clock().now()
+        seed = os.environ.get('SIM_SEED')
+        self.walker = RandomWalker(random.Random(int(seed)) if seed else None)
+        self.last_tick = self.get_clock().now()
         self.battery = 60.0
         self.lidar_was_down = False
         self.last_batt_level = None
@@ -50,6 +77,8 @@ class FakeWriter(Node):
         self.batt_pub = self.create_publisher(BatteryState, '/battery_state', 10)
         self.diag_pub = self.create_publisher(DiagnosticArray, '/diagnostics', 10)
         self.tf = TransformBroadcaster(self)
+        self.create_subscription(String, '/sim/reset', self.on_reset, 10)
+        self.create_subscription(String, '/sim/zone', self.on_zone, 10)
         self.create_timer(0.1, self.tick_motion)
         self.create_timer(0.2, self.tick_scan)
         self.create_timer(1.0, self.tick_health)
@@ -58,20 +87,38 @@ class FakeWriter(Node):
     def elapsed(self):
         return (self.get_clock().now() - self.t0).nanoseconds / 1e9
 
+    def on_reset(self, _msg):
+        """Bouton Reset du dashboard : le Writer repart de l'origine vers de nouveaux points au hasard."""
+        self.walker.reset()
+        self.t0 = self.get_clock().now()
+        self.get_logger().info('reset : Writer repart de l\'origine')
+
+    def on_zone(self, msg):
+        """Le dashboard a dessine une nouvelle zone : le Writer repart de son centre."""
+        try:
+            ok = zone.set_polygon(json.loads(msg.data).get('polygon'))
+        except (ValueError, AttributeError):
+            ok = False
+        if ok:
+            self.walker.reset()
+            self.get_logger().info('nouvelle zone recue : le Writer repart de son centre')
+
     def pose(self):
-        a = self.elapsed() / 10.0
-        x, y = 4 * math.cos(a), 3 * math.sin(a)
-        yaw = math.atan2(3 * math.cos(a), -4 * math.sin(a))
-        speed = math.hypot(0.4 * math.sin(a), 0.3 * math.cos(a))
-        return x, y, yaw, speed
+        """Promenade aleatoire dans le bloc. Retourne x, y, cap, vitesse."""
+        w = self.walker
+        return w.x, w.y, w.yaw, w.speed
 
     def lidar_down(self):
         return (self.elapsed() % LIDAR_PERIOD) >= LIDAR_PERIOD - LIDAR_DOWN
 
     def tick_motion(self):
+        t = self.get_clock().now()
+        self.walker.tick((t - self.last_tick).nanoseconds / 1e9)
+        self.last_tick = t
         x, y, yaw, speed = self.pose()
-        now = self.get_clock().now().to_msg()
+        now = t.to_msg()
         qz, qw = math.sin(yaw / 2), math.cos(yaw / 2)
+
         odom = Odometry()
         odom.header.stamp = now
         odom.header.frame_id = 'odom'
@@ -82,6 +129,7 @@ class FakeWriter(Node):
         odom.pose.pose.orientation.w = qw
         odom.twist.twist.linear.x = speed
         self.odom_pub.publish(odom)
+
         tf = TransformStamped()
         tf.header.stamp = now
         tf.header.frame_id = 'odom'
@@ -94,8 +142,10 @@ class FakeWriter(Node):
 
     def tick_scan(self):
         if self.lidar_down():
-            return
+            return  # panne simulee : plus aucun message sur /scan
         x, y, yaw, _ = self.pose()
+        cx, cy = zone.center()
+        x, y = x - cx, y - cy   # murs centres sur la zone
         n = 360
         scan = LaserScan()
         scan.header.stamp = self.get_clock().now().to_msg()
@@ -106,7 +156,9 @@ class FakeWriter(Node):
         scan.scan_time = 0.2
         scan.range_min = 0.1
         scan.range_max = 12.0
-        scan.ranges = [float(ray_range(x, y, yaw - math.pi + i * scan.angle_increment, 12.0)) for i in range(n)]
+        scan.ranges = [
+            float(ray_range(x, y, yaw - math.pi + i * scan.angle_increment, 12.0)) for i in range(n)
+        ]
         self.scan_pub.publish(scan)
 
     @staticmethod
@@ -125,6 +177,7 @@ class FakeWriter(Node):
             self.battery = 100.0
             self.get_logger().info('Battery swapped: back to 100 %')
         now = self.get_clock().now().to_msg()
+
         batt = BatteryState()
         batt.header.stamp = now
         batt.percentage = self.battery / 100.0
@@ -132,6 +185,7 @@ class FakeWriter(Node):
         batt.present = True
         batt.power_supply_status = BatteryState.POWER_SUPPLY_STATUS_DISCHARGING
         self.batt_pub.publish(batt)
+
         if self.battery < 15:
             blvl, bmsg = DiagnosticStatus.ERROR, 'critical: return to base'
         elif self.battery < 30:
@@ -139,15 +193,22 @@ class FakeWriter(Node):
         else:
             blvl, bmsg = DiagnosticStatus.OK, 'ok'
         down = self.lidar_down()
+
         diag = DiagnosticArray()
         diag.header.stamp = now
         diag.status = [
-            self.status('writer/battery', blvl, bmsg, {'percentage': f'{self.battery:.1f}', 'voltage': f'{batt.voltage:.2f}'}),
-            self.status('writer/lidar', DiagnosticStatus.ERROR if down else DiagnosticStatus.OK,
-                        'no scan received' if down else 'publishing at 5 Hz', {'rate_hz': '0' if down else '5'}),
-            self.status('writer/motors', DiagnosticStatus.OK, 'ok', {'speed_mps': f'{self.pose()[3]:.2f}'}),
+            self.status('writer/battery', blvl, bmsg,
+                        {'percentage': f'{self.battery:.1f}', 'voltage': f'{batt.voltage:.2f}'}),
+            self.status('writer/lidar',
+                        DiagnosticStatus.ERROR if down else DiagnosticStatus.OK,
+                        'no scan received' if down else 'publishing at 5 Hz',
+                        {'rate_hz': '0' if down else '5'}),
+            self.status('writer/motors', DiagnosticStatus.OK, 'ok',
+                        {'speed_mps': f'{self.pose()[3]:.2f}'}),
         ]
         self.diag_pub.publish(diag)
+
+        # Logs dans /rosout uniquement quand l'etat change (visible dans le panneau Log)
         if down and not self.lidar_was_down:
             self.get_logger().error('LIDAR fault: no /scan (simulated, 10 s)')
         elif not down and self.lidar_was_down:

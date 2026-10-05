@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { WebSocket } from 'ws';
 import net from 'node:net';
 import { createHmac } from 'node:crypto';
+import { readBeacons } from '../src/network-bridge-core.js';
 
 function sendBeacon(timestamp, x) {
   const payload = Buffer.alloc(16);
@@ -79,4 +80,15 @@ test('dashboard serves assets and runs/cancels Python missions through its WebSo
   await waitFor(m => m.kind === 'mission' && m.payload.id === cancelId && m.payload.status === 'cancelled');
   const cancelled = await (await fetch(process.env.EXECUTOR_URL + '/state')).json();
   assert.ok(cancelled.pos.x < 100, 'cancellation stops actual Python navigation');
+  const network = { host: 'strong-node', port: 65432, secret: process.env.SHARED_SECRET };
+  const before = await readBeacons(network);
+  send('fallback-reset', { action: 'reset-map' });
+  await waitFor(m => m.kind === 'map.reset' && m.payload.scope === 'network');
+  await new Promise(resolve => setTimeout(resolve, 1500));
+  const offset = messages.length;
+  send('fallback-sync-after-reset', { action: 'sync' });
+  await waitFor(m => m.kind === 'cmd.ack' && m.payload.ackFor === 'fallback-sync-after-reset');
+  assert.ok(!messages.slice(offset).some(m => m.kind === 'beacon' || m.kind === 'target' || m.kind === 'mission'));
+  assert.deepEqual(await readBeacons(network), before);
+
 });

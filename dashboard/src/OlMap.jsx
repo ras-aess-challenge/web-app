@@ -10,6 +10,11 @@ import Feature from 'ol/Feature.js';
 import Point from 'ol/geom/Point.js';
 import LineString from 'ol/geom/LineString.js';
 import Polygon from 'ol/geom/Polygon.js';
+import Draw from 'ol/interaction/Draw.js';
+import { fromMap } from './geo.js';
+import { validPolygon } from '../../shared/contract.js';
+import { ELLIPSE, ellipseVisible } from './staleness.js';
+import { ring as zoneRingOf } from './zone.js';
 import { boundingExtent, buffer } from 'ol/extent.js';
 import { Attribution, ScaleLine, defaults as defaultControls } from 'ol/control.js';
 import { Stroke, Fill, Style, Text, RegularShape, Circle as CircleStyle } from 'ol/style.js';
@@ -57,8 +62,8 @@ function label(text, opts = {}) {
 }
 
 // Every position the map draws, for "fit to data".
-function dataCoords({ robots, targets, beacons, trails, mission }) {
-  const pts = [];
+function dataCoords({ robots, targets, beacons, trails, mission, zone }) {
+  const pts = zoneRingOf(zone || []).map(([x, y]) => P(x, y)); // the allowed zone is always in frame
   for (const r of Object.values(robots || {})) if (r?.pos) pts.push(P(r.pos.x, r.pos.y));
   for (const t of Object.values(targets || {})) if (t?.pos) pts.push(P(t.pos.x, t.pos.y));
   for (const b of Object.values(beacons || {})) if (b?.pos) pts.push(P(b.pos.x, b.pos.y));
@@ -68,7 +73,9 @@ function dataCoords({ robots, targets, beacons, trails, mission }) {
 }
 
 // Same props as MapCanvas so App can A/B them.
-export default function OlMap({ targets, robots, trails, beacons, events, mission, layers, selectedBeacon }) {
+export default function OlMap({ targets, robots, trails, beacons, events, mission, layers, selectedBeacon, zone, onZone }) {
+  const [drawing, setDrawing] = useState(false);
+  const [zoneError, setZoneError] = useState('');
   const divRef = useRef(null);
   const mapRef = useRef(null);
   const srcRef = useRef(null);
@@ -85,13 +92,13 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
     const beaconSig = Object.values(beacons || {}).map((b) => `${b.id}:${r(b.pos.x)},${r(b.pos.y)},${b.status}`);
     const eventSig = (events || []).slice(0, 50).map((e) => e.id);
     const missionSig = mission ? `${mission.id}:${mission.status}:${mission.target?.beaconId}:${mission.target?.pos ? `${r(mission.target.pos.x)},${r(mission.target.pos.y)}` : ''}` : 'none';
-    const targetSig = Object.values(targets || {}).map((t) => `${t.id}:${r(t.pos.x)},${r(t.pos.y)},${t.confidence?.toFixed(2)},${t._stale}`);
+    const targetSig = Object.values(targets || {}).map((t) => `${t.id}:${r(t.pos.x)},${r(t.pos.y)},${t._pod?.toFixed(3)},${t._sigmaX?.toFixed(3)},${t._sigmaY?.toFixed(3)},${ellipseVisible(t._ageMs ?? 0)},${t._stale}`);
     return JSON.stringify([trailSig, robotSig, beaconSig, eventSig, missionSig, targetSig, selectedBeacon, layers]);
   }
 
   function fitToData(animate = true) {
     const v = mapRef.current?.getView();
-    const pts = dataCoords({ robots, targets, beacons, trails, mission });
+    const pts = dataCoords({ robots, targets, beacons, trails, mission, zone });
     if (!v || pts.length === 0) return false;
     // Always include the area around the local origin (writer start) so the
     // first fit shows the whole site, not just one robot.
@@ -104,6 +111,7 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
   useEffect(() => {
     const src = {
       grid: new VectorSource({ features: gridFeatures() }),
+      zone: new VectorSource(),
       trails: new VectorSource(),
       beacons: new VectorSource(),
       events: new VectorSource(),
@@ -115,15 +123,16 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
     const major = new Style({ stroke: new Stroke({ color: '#2b3a4b', width: 1.5 }) });
     const osmLayer = new TileLayer({ source: new OSM(), zIndex: -1 });
     const gridLayer = new VectorLayer({ source: src.grid, style: (f) => (f.get('major') ? major : minor), zIndex: 0, visible: false });
+    const zoneLayer = new VectorLayer({ source: src.zone, zIndex: 0.5, style: new Style({ stroke: new Stroke({ color: '#ffb020', width: 2, lineDash: [10, 8] }) }) });
     const trailsLayer = new VectorLayer({ source: src.trails, zIndex: 1 });
-    const missionLayer = new VectorLayer({ source: src.mission, zIndex: 2 });
+    const missionLayer = new VectorLayer({ declutter: 'labels', source: src.mission, zIndex: 2 });
     const eventsLayer = new VectorLayer({ source: src.events, zIndex: 3 });
-    const beaconsLayer = new VectorLayer({ source: src.beacons, zIndex: 4 });
-    const targetsLayer = new VectorLayer({ source: src.targets, zIndex: 5 });
-    const robotsLayer = new VectorLayer({ source: src.robots, zIndex: 6 });
+    const beaconsLayer = new VectorLayer({ declutter: 'labels', source: src.beacons, zIndex: 4 });
+    const targetsLayer = new VectorLayer({ declutter: 'labels', source: src.targets, zIndex: 5 });
+    const robotsLayer = new VectorLayer({ declutter: 'labels', source: src.robots, zIndex: 6 });
     const map = new Map({
       target: divRef.current,
-      layers: [osmLayer, gridLayer, trailsLayer, missionLayer, eventsLayer, beaconsLayer, targetsLayer, robotsLayer],
+      layers: [osmLayer, gridLayer, zoneLayer, trailsLayer, missionLayer, eventsLayer, beaconsLayer, targetsLayer, robotsLayer],
       view: new View({ center: HOME.center, resolution: HOME.resolution, minResolution: 0.005, maxResolution: 50 }),
       controls: defaultControls({ zoom: false, rotate: false }).extend([
         new Attribution({ collapsible: true }),
@@ -135,6 +144,14 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
     return () => map.setTarget(null);
   }, []);
 
+  // allowed-zone outline (follows the `zone` prop, which the Draw tool can replace)
+  useEffect(() => {
+    const z = srcRef.current?.src.zone;
+    if (!z) return;
+    z.clear();
+    if (zone && zone.length >= 3) z.addFeature(new Feature({ geometry: new LineString(zoneRingOf(zone).map(([x, y]) => P(x, y))) }));
+  }, [zone]);
+
   // base switch: OSM tiles vs offline grid (same center: the site anchor)
   useEffect(() => {
     if (!srcRef.current) return;
@@ -145,7 +162,7 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
   useEffect(() => {
     if (!srcRef.current) return;
     // First data: zoom so every robot / target / beacon is on screen.
-    if (!fittedRef.current && Object.keys(robots || {}).length > 0) fittedRef.current = fitToData(false);
+    if (!fittedRef.current && (zone?.length >= 3 || Object.keys(robots || {}).length > 0)) fittedRef.current = fitToData(false);
     // follow camera stays live every render (cheap: one setCenter)
     if (follow !== 'none' && robots?.[follow]) {
       mapRef.current?.getView().setCenter(P(robots[follow].pos.x, robots[follow].pos.y));
@@ -179,10 +196,10 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
         const f = new Feature({ geometry: new Point(P(b.pos.x, b.pos.y)) });
         const sel = b.id === selectedBeacon;
         const styles = [new Style({
-          image: new RegularShape({ points: 4, radius: 12, angle: 0, fill: new Fill({ color: sel ? '#ffd43b' : '#4dabf7' }), stroke: new Stroke({ color: '#fff', width: 2 }) }),
-          text: label(b.id, { offsetY: -20 }),
+          image: new RegularShape({ declutterMode: 'none', points: 4, radius: 12, angle: 0, fill: new Fill({ color: sel ? '#ffd43b' : '#4dabf7' }), stroke: new Stroke({ color: '#fff', width: 2 }) }),
+          text: sel ? label(b.id, { offsetY: -20 }) : undefined,
         })];
-        if (sel) styles.push(new Style({ image: new CircleStyle({ radius: 20, stroke: new Stroke({ color: '#ffd43b', width: 2, lineDash: [4, 4] }) }) }));
+        if (sel) styles.push(new Style({ image: new CircleStyle({ declutterMode: 'none', radius: 20, stroke: new Stroke({ color: '#ffd43b', width: 2, lineDash: [4, 4] }) }) }));
         f.setStyle(styles);
         src.beacons.addFeature(f);
       }
@@ -193,7 +210,7 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
       for (const e of (events || []).slice(0, 50)) {
         const f = new Feature({ geometry: new Point(P(e.pos.x, e.pos.y)) });
         f.setStyle(new Style({
-          image: new RegularShape({
+          image: new RegularShape({ declutterMode: 'none',
             points: 4, radius: 8, angle: Math.PI / 4,
             fill: new Fill({ color: e.severity === 'critical' ? '#ff5252' : e.severity === 'warn' ? '#ffb020' : '#868e96' }),
             stroke: new Stroke({ color: '#0b0e13', width: 1 }),
@@ -210,13 +227,13 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
       const line = new Feature({ geometry: new LineString([P(robots.executor.pos.x, robots.executor.pos.y), P(mpos.x, mpos.y)]) });
       line.setStyle(new Style({ stroke: new Stroke({ color, width: 3, lineDash: [10, 8] }) }));
       const ring = new Feature({ geometry: new Point(P(mpos.x, mpos.y)) });
-      ring.setStyle(new Style({ image: new CircleStyle({ radius: 16, stroke: new Stroke({ color, width: 3 }) }), text: label(`${mission.id} · ${mission.status}`, { offsetY: 28 }) }));
+      ring.setStyle(new Style({ image: new CircleStyle({ declutterMode: 'none', radius: 16, stroke: new Stroke({ color, width: 3 }) }), text: label(`${mission.id} · ${mission.status}`, { offsetY: 28 }) }));
       src.mission.addFeature(line);
       src.mission.addFeature(ring);
     } else if (mpos && mission?.status === 'done') {
       const ring = new Feature({ geometry: new Point(P(mpos.x, mpos.y)) });
       ring.setStyle(new Style({
-        image: new CircleStyle({ radius: 16, stroke: new Stroke({ color: '#35d07f', width: 3 }) }),
+        image: new CircleStyle({ declutterMode: 'none', radius: 16, stroke: new Stroke({ color: '#35d07f', width: 3 }) }),
         text: label(`✓ ${mission.id} done`, { offsetY: 28, fill: new Fill({ color: '#35d07f' }) }),
       }));
       src.mission.addFeature(ring);
@@ -227,9 +244,9 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
       if (!r) continue;
       const f = new Feature({ geometry: new Point(P(r.pos.x, r.pos.y)) });
       f.setStyle([
-        new Style({ image: new CircleStyle({ radius: 18, fill: new Fill({ color: `${ROBOT_COLORS[rid] ?? '#ced4da'}33` }) }) }),
+        new Style({ image: new CircleStyle({ declutterMode: 'none', radius: 18, fill: new Fill({ color: `${ROBOT_COLORS[rid] ?? '#ced4da'}33` }) }) }),
         new Style({
-          image: new RegularShape({
+          image: new RegularShape({ declutterMode: 'none',
             points: 3, radius: 14, rotation: Math.PI / 2 - (r.theta || 0),
             fill: new Fill({ color: ROBOT_COLORS[rid] ?? '#ced4da' }),
             stroke: new Stroke({ color: '#fff', width: 2 }),
@@ -244,21 +261,38 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
     if (layers.targets) {
       for (const [ti, t] of Object.values(targets || {}).entries()) {
         const lost = t._stale === 'LOST';
-        const el = new Feature({ geometry: new Polygon(ellipseRing(t.pos.x, t.pos.y, t._sigmaX ?? t.uncertainty.sigmaX, t._sigmaY ?? t.uncertainty.sigmaY, t.uncertainty.angleDeg)) });
-        el.setStyle(new Style({
-          stroke: new Stroke({ color: lost ? staleColor(t._stale) + '66' : staleColor(t._stale), width: 2 }),
-          fill: new Fill({ color: staleColor(t._stale) + '22' }),
-        }));
+        let el = null;
+        if (ellipseVisible(t._ageMs ?? 0)) { // too old -> no circle, the dot + PoD label stay
+          el = new Feature({ geometry: new Polygon(ellipseRing(t.pos.x, t.pos.y, t._sigmaX ?? t.uncertainty.sigmaX, t._sigmaY ?? t.uncertainty.sigmaY, t.uncertainty.angleDeg, K * ELLIPSE.SCALE)) });
+          el.setStyle(new Style({
+            stroke: new Stroke({ color: lost ? staleColor(t._stale) + '66' : staleColor(t._stale), width: 2 }),
+            fill: new Fill({ color: staleColor(t._stale) + '22' }),
+          }));
+        }
         const dot = new Feature({ geometry: new Point(P(t.pos.x, t.pos.y)) });
         dot.setStyle(new Style({
-          image: new CircleStyle({ radius: 6, fill: new Fill({ color: '#fff' }), stroke: new Stroke({ color: '#0b0e13', width: 2 }) }),
+          image: new CircleStyle({ declutterMode: 'none', radius: 6, fill: new Fill({ color: '#fff' }), stroke: new Stroke({ color: '#0b0e13', width: 2 }) }),
           text: label(`${t.id} PoD ${(((t._pod ?? t.confidence) ?? 0) * 100).toFixed(0)}%${t._rescout ? ' · RE-SCOUT' : ''}`, { offsetX: 12, offsetY: [-16, 0, 16][ti % 3], textAlign: 'left' }), // étiquettes décalées : pas de chevauchement
         }));
-        src.targets.addFeature(el);
+        if (el) src.targets.addFeature(el);
         src.targets.addFeature(dot);
       }
     }
   });
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!drawing || !map || !onZone) return;
+    const draw = new Draw({ type: 'Polygon', maxPoints: 16 });
+    draw.on('drawend', event => {
+      const polygon = event.feature.getGeometry().getCoordinates()[0].slice(0, -1).map(([x, y]) => fromMap(x, y));
+      if (validPolygon(polygon)) { setZoneError(''); onZone(polygon); }
+      else setZoneError('Use 3–16 vertices and an area of at least 4 m².');
+      setDrawing(false);
+    });
+    map.addInteraction(draw);
+    return () => map.removeInteraction(draw);
+  }, [drawing, onZone]);
 
   const zoom = (f) => {
     const v = mapRef.current?.getView();
@@ -284,6 +318,9 @@ export default function OlMap({ targets, robots, trails, beacons, events, missio
             <button key={k} className={follow === k ? 'active' : ''} onClick={() => setFollow(k)}>{k}</button>
           ))}
         </div>
+        {onZone && <button className="btn" onClick={() => setDrawing(d => !d)}>{drawing ? 'Cancel drawing' : 'Draw zone'}</button>}
+        {drawing && <span className="muted small">Click vertices; double-click to finish.</span>}
+        {zoneError && <span role="alert">{zoneError}</span>}
         <span className="muted small">anchor {ANCHOR[1].toFixed(5)}, {ANCHOR[0].toFixed(5)}</span>
       </div>
       <div ref={divRef} className="ol-map" />

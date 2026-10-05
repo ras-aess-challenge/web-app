@@ -1,4 +1,4 @@
-import { isEnvelope, normalizeTarget, normalizeTelemetry, normalizeEvent, normalizeBeacon, normalizeMission } from '../../shared/contract.js';
+import { isEnvelope, normalizeTarget, normalizeTelemetry, normalizeEvent, normalizeBeacon, normalizeMission, validPolygon } from '../../shared/contract.js';
 
 // Validate + normalize an MQTT message into a WS envelope payload.
 // Returns envelope object or null (drop + count).
@@ -10,6 +10,10 @@ export function toEnvelope(topic, raw, seqFn) {
     } catch {
       return null;
     }
+  }
+  if (topic === 'system/map-reset') {
+    if (!parsed || parsed.id !== 'simulation' || typeof parsed.ts !== 'string' || Number.isNaN(Date.parse(parsed.ts)) || !validPolygon(parsed.polygon)) return null;
+    return { kind: 'map.reset', id: `msg-${seqFn()}`, seq: seqFn(), ts: parsed.ts, source: 'ona', payload: parsed };
   }
   const [domain] = topic.split('/');
   let kind = 'target';

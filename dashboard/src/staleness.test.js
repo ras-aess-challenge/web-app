@@ -47,3 +47,15 @@ describe('staleness engine (PoD decay + ellipse growth)', () => {
     expect(currentPod(0.9, Infinity)).toBe(0);
   });
 });
+
+import { ellipseVisible } from './staleness.js';
+describe('uncertainty display lifetime', () => {
+  it('keeps the boundary visible and hides older reports', () => {
+    expect(ellipseVisible(15000, { HIDE_S: 15 })).toBe(true);
+    expect(ellipseVisible(15001, { HIDE_S: 15 })).toBe(false);
+  });
+  it('zero disables hiding while probability still decays', () => {
+    expect(ellipseVisible(Infinity, { HIDE_S: 0 })).toBe(true);
+    expect(currentPod(0.9, Infinity)).toBe(0);
+  });
+});

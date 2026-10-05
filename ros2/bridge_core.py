@@ -329,8 +329,45 @@ class MissionTracker:
             return self._payload(now)
         return None
 
+    def busy(self):
+        return bool(self.current) and self.current['status'] in ('pending', 'active')
+
     def snapshot(self, now):
         return self._payload(now) if self.current else None
+
+
+class AutoDispatcher:
+    """File d'attente d'auto-dispatch : l'Executor part tout seul vers chaque nouvelle balise.
+
+    Ordre : severite (critical > warn > info), puis ordre d'arrivee. Une balise n'est visitee
+    qu'une fois (visitee, annulee ou assignee a la main -> `mark`).
+    """
+    RANK = {'critical': 0, 'warn': 1, 'info': 2}
+
+    def __init__(self, enabled=True):
+        self.enabled = enabled
+        self.queue = {}      # bid -> (rank, seq)
+        self.handled = set()
+        self._seq = 0
+
+    def add(self, bid, severity='info'):
+        if bid in self.handled or bid in self.queue:
+            return
+        self._seq += 1
+        self.queue[bid] = (self.RANK.get(severity, 2), self._seq)
+
+    def mark(self, bid):
+        if bid:
+            self.handled.add(bid)
+            self.queue.pop(bid, None)
+
+    def next(self, mission_busy):
+        """-> id de la prochaine balise a visiter, ou None (desactive / mission en cours / rien)."""
+        if not self.enabled or mission_busy or not self.queue:
+            return None
+        bid = min(self.queue, key=self.queue.get)
+        self.mark(bid)
+        return bid
 
 
 def make_event_payload(ev, pos, source, now):
